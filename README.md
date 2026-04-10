@@ -3,18 +3,37 @@
 A secure, fully Zero-Memory execution wrapper for AI and generic API clients. 
 Instead of storing plaintext credentials in `os.environ`, this SDK keeps them completely invisible. It intercepts the client construction, performs a blind PBKDF2 decryption in-memory at runtime, securely passes the decrypted credential only to the relevant library, and immediately purges it.
 
-## Config: `.ranbval` (replaces juggling `.env` in code)
+## Config: layered `.ranbval*` (like `.env` / `.env.local`)
 
-On **`import ranbval_sdk`**, the SDK looks for a **`.ranbval`** file in the current working directory, then each parent directory, and loads `KEY=value` lines into `os.environ` (same spirit as dotenv).
+**You import and call `load_ranbval()` yourself** (no automatic load on `import ranbval_sdk`).
 
-- **Plaintext** variables (e.g. `RANBVAL_VAULT_SECRET`, optional third-party keys) are stored **as-is** in the file.
-- **Ranbval-encoded** values (`ranbval.noise.blob.ahsan`) stay **opaque on disk**; the real secret exists only briefly in memory when you call the provider.
-- **`RANBVAL_HOST`** is optional — if omitted, the SDK uses the **hosted password-manager** default (no prompt).
-- **No interactive prompts** for vault password or host.
+```python
+from ranbval_sdk import load_ranbval, SecureOpenAI
 
-Copy [`.ranbval.example`](.ranbval.example) to **`.ranbval`**, fill it, add `.ranbval` to **`.gitignore`**. You can still set variables in the real environment (e.g. CI); by default the SDK **does not** override already-set env vars.
+load_ranbval()  # merges files, see below
+client = SecureOpenAI()
+```
 
-To force reload or use a specific path: `from ranbval_sdk import load_ranbval; load_ranbval("/path/to/.ranbval", override=True)`.
+From the **current working directory upward**, the SDK finds the first directory that contains `.ranbval` or any `.ranbval.*` file, then **merges** these files **in order** (later overrides earlier for the same key):
+
+| Order | File | Purpose |
+|------:|------|---------|
+| 1 | `.ranbval` | Shared defaults |
+| 2 | `.ranbval.development` or `.ranbval.production` | Picked by **mode** (see below) |
+| 3 | `.ranbval.local` | Machine-only overrides (gitignore) |
+| 4 | `.ranbval.development.local` / `.ranbval.production.local` | Mode + local |
+
+**Mode** (`development` vs `production`): `load_ranbval(mode="production")`, or set `RANBVAL_ENV` / `ENVIRONMENT` / `ENV` **before** calling `load_ranbval()`, or default is `development`.
+
+- **Plaintext** variables stay readable in the file; **Ranbval tokens** stay encoded on disk; plaintext API keys exist only briefly in memory when used.
+- **`RANBVAL_HOST`** optional — SDK defaults to the hosted password-manager if unset.
+- **`override=True`**: merged file values always replace `os.environ`; default `False` keeps existing shell/CI env vars.
+
+Single file only: `load_ranbval("/path/to/.ranbval")`.
+
+Helpers: `find_ranbval_directory()`, `find_ranbval_file()`, `resolve_ranbval_mode()`.
+
+See [`.ranbval.example`](.ranbval.example). Add `.ranbval.local` and `*.local` to **`.gitignore`**.
 
 ## Quick Start (Pre-Built Clients)
 
@@ -22,9 +41,9 @@ For the most popular SDKs, we offer drop-in replacements. Simply swap your impor
 
 ### OpenAI
 ```python
-from ranbval_sdk import SecureOpenAI
+from ranbval_sdk import load_ranbval, SecureOpenAI
 
-# Ensure .ranbval exists with OPENAI_API_KEY and RANBVAL_VAULT_SECRET (see .ranbval.example)
+load_ranbval()
 client = SecureOpenAI()
 client.chat.completions.create(model="gpt-4", ...)
 ```
@@ -44,8 +63,9 @@ client = SecureOpenAI()
 ### Anthropic / Mistral / Supabase
 We offer similarly secure blind wrappers for other leading SDKs:
 ```python
-from ranbval_sdk import SecureAnthropic, SecureMistral, SecureSupabase
+from ranbval_sdk import load_ranbval, SecureAnthropic, SecureMistral, SecureSupabase
 
+load_ranbval()
 anthropic_client = SecureAnthropic()
 mistral_client = SecureMistral()
 ```
@@ -55,9 +75,10 @@ mistral_client = SecureMistral()
 If you need to strictly encrypt secrets for an SDK that we don't natively ship (e.g. `Stripe`, `Twilio`, or internal APIs), you can use the Universal Integration Engine to wrap ANY Python class dynamically:
 
 ```python
-from ranbval_sdk import build_secure_client
+from ranbval_sdk import load_ranbval, build_secure_client
 import stripe
 
+load_ranbval()
 # Generates a Drop-in Secure Proxy for the Stripe SDK dynamically
 SecureStripe = build_secure_client(
     SDKClass=stripe.StripeClient,

@@ -1,14 +1,16 @@
-# Copy to .ranbval in your project root (add .ranbval to .gitignore).
-# Loaded automatically on import ranbval_sdk — same idea as .env, no prompts for host/secret.
+# Copy / split across layered files in your project root (add .ranbval* secrets to .gitignore).
 
-# Master password (plaintext in this file only — keep file private)
+# --- .ranbval (shared defaults, safe to commit if no secrets) ---
+# RANBVAL_HOST=https://ranbval-password-manager.onrender.com
+
+# --- .ranbval.development (RANBVAL_ENV=development or load_ranbval(mode="development")) ---
+# RANBVAL_HOST=http://127.0.0.1:8006
+
+# --- .ranbval.production (RANBVAL_ENV=production or load_ranbval(mode="production")) ---
+# (override host or keys for prod only)
+
+# --- .ranbval.local (machine-only; never commit) ---
 RANBVAL_VAULT_SECRET=your_dashboard_login_password
-
-# Encrypted Ranbval token stays encoded here; plaintext API key exists only in memory during calls
 OPENAI_API_KEY=ranbval.xxxxxxxx.[BLOB].ahsan
 
-# Optional: other plaintext SDK envs
-# ANTHROPIC_API_KEY=sk-ant-...
-
-# Optional: self-hosted password-manager origin (no /api). Omitted = hosted default in SDK.
-# RANBVAL_HOST=http://127.0.0.1:8006
+# Optional: .ranbval.production.local — prod overrides + local secrets

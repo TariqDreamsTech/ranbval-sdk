@@ -1,8 +1,11 @@
-"""Ranbval SDK — loads ``.ranbval`` from cwd (or parents) before exposing clients."""
+"""Ranbval SDK — call ``load_ranbval()`` before using clients (see ``dot_ranbval``)."""
 
-from ranbval_sdk.dot_ranbval import find_ranbval_file, load_ranbval
-
-load_ranbval()
+from ranbval_sdk.dot_ranbval import (
+    find_ranbval_directory,
+    find_ranbval_file,
+    load_ranbval,
+    resolve_ranbval_mode,
+)
 
 from .integrations.openai_client import SecureOpenAI
 from .integrations.universal import build_secure_client
@@ -16,4 +19,6 @@ __all__ = [
     "SecureSupabase",
     "load_ranbval",
     "find_ranbval_file",
+    "find_ranbval_directory",
+    "resolve_ranbval_mode",
 ]
