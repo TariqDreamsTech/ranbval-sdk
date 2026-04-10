@@ -1,8 +1,14 @@
 import base64
 import hashlib
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
+import os
+
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST
+from ranbval_sdk.repo_policy import assert_repo_allowed_for_decrypt
+
 
 def derive_key(password: str, salt_str: str) -> bytes:
     # Use the 10-char noise from the token as the salt
@@ -16,6 +22,13 @@ def derive_key(password: str, salt_str: str) -> bytes:
     )
     return kdf.derive(password.encode())
 
+
+def _enforce_repo_allowlist_if_configured(client_salt: str) -> None:
+    """Load policy from RANBVAL_HOST; when allowlist is non-empty, require matching git origin."""
+    host = (os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).strip()
+    assert_repo_allowed_for_decrypt(host, client_salt)
+
+
 def safe_decrypt(copy_token: str, vault_secret: str) -> str:
     """
     Takes the encapsulated cryptographic identity token and performs zero-knowledge
@@ -28,6 +41,9 @@ def safe_decrypt(copy_token: str, vault_secret: str) -> str:
         # Compatibility/Fallback check
         if len(packet_segments) == 5:
             header, noise, salt, blob, tail = packet_segments
+            if header != "ranbval":
+                raise ValueError("Corrupted cryptographic token identifier or signature matrix")
+            _enforce_repo_allowlist_if_configured(noise)
             # If it's the old 5-part format, use the designated salt segment
             key = derive_key(vault_secret, salt)
             b64_payload = blob
@@ -43,7 +59,8 @@ def safe_decrypt(copy_token: str, vault_secret: str) -> str:
         if header != "ranbval" or tail_sig != "ahsan":
             # Optional: Add hash checks if needed, but literals are safer for user-facing tokens
             raise ValueError("Corrupted cryptographic token identifier or signature matrix")
-            
+
+        _enforce_repo_allowlist_if_configured(noise_salt)
         key = derive_key(vault_secret, noise_salt)
 
     # 2. Decode payload (IV + Ciphertext)
