@@ -6,6 +6,7 @@ from queue import SimpleQueue
 import openai
 
 from ranbval_sdk.crypto import safe_decrypt
+from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST
 from ranbval_sdk.repo_policy import assert_repo_allowed_for_decrypt
 
 _telemetry_queue: SimpleQueue | None = None
@@ -86,7 +87,7 @@ def _telemetry_worker_loop() -> None:
             repo_path = os.getcwd()
             machine_name = socket.gethostname()
             git_url = get_git_remote()
-            host = os.environ.get("RANBVAL_HOST", "http://localhost:8006")
+            host = os.environ.get("RANBVAL_HOST", DEFAULT_RANBVAL_HOST)
             parsed = urlparse(host)
             transport = (parsed.scheme or "http").lower()
             ci_environment = any(
@@ -160,7 +161,7 @@ class SecureOpenAI(openai.OpenAI):
         self._telemetry_roundtrip_ms = None
         encoded_key = os.environ.get("OPENAI_API_KEY", "")
         secret = os.environ.get("RANBVAL_VAULT_SECRET", "ranbval")
-        host = os.environ.get("RANBVAL_HOST", "http://localhost:8006")
+        host = os.environ.get("RANBVAL_HOST", DEFAULT_RANBVAL_HOST)
 
         if not encoded_key:
             raise ValueError("No OPENAI_API_KEY found or provided.")

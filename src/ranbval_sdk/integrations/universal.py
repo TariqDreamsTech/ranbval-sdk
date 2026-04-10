@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from typing import Type, Any, Optional
 
 from ranbval_sdk.crypto import safe_decrypt
+from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST
 
 def _get_git_remote() -> str | None:
     try:
@@ -97,7 +98,7 @@ def build_secure_client(SDKClass: Type[Any], env_var_name: str, key_kwarg: str, 
         def __init__(self, *args, **kwargs):
             encoded_key = os.environ.get(env_var_name, "")
             secret = os.environ.get("RANBVAL_VAULT_SECRET", "ranbval")
-            host = os.environ.get("RANBVAL_HOST", "http://localhost:8006")
+            host = os.environ.get("RANBVAL_HOST", DEFAULT_RANBVAL_HOST)
             
             if not encoded_key:
                 raise ValueError(f"No {env_var_name} found or provided.")

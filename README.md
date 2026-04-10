@@ -54,7 +54,7 @@ Pre-built clients enqueue **usage and security metadata** to your Ranbval API (`
 
 | Variable | Meaning |
 |----------|---------|
-| `RANBVAL_HOST` | API base URL (default in SDK may differ by version; set explicitly in production) |
+| `RANBVAL_HOST` | Password-manager origin (no `/api` suffix). Defaults to the hosted service; set to `http://localhost:8006` for local backends. |
 | `RANBVAL_TELEMETRY` | `0`, `false`, `off` — disable telemetry entirely |
 
 For the full ingest schema, pagination, and dashboard behavior, see the **[ranbval-password-manager README](../ranbval-password-manager/README.md)** (Telemetry section).
@@ -65,7 +65,7 @@ If the project owner adds allowed repo URLs in the dashboard (or via `POST /api/
 
 | Variable | Meaning |
 |----------|---------|
-| `RANBVAL_HOST` | Must point at the password-manager API (path `/api/public/repo-policy` is appended internally). |
+| `RANBVAL_HOST` | Same origin as telemetry (paths like `/api/public/repo-policy` are appended internally). |
 | `RANBVAL_SKIP_REPO_CHECK` | Set to `1` / `true` to skip the check (development only; not for production). |
 
 Empty allowlist on the server means **no** client-side enforcement.
