@@ -9,6 +9,8 @@ import urllib.parse
 import urllib.request
 from urllib.parse import urlparse
 
+from ranbval_sdk import http_tls
+
 
 def normalize_git_remote_url(url: str | None) -> str | None:
     if not url or not isinstance(url, str):
@@ -66,7 +68,7 @@ def fetch_repo_policy(ranbval_host: str, client_salt: str) -> dict:
     qs = urllib.parse.urlencode({"client_salt": client_salt})
     url = f"{base}/api/public/repo-policy?{qs}"
     req = urllib.request.Request(url, method="GET", headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=12) as resp:
+    with http_tls.urlopen(req, timeout=12) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 

@@ -64,6 +64,8 @@ Use the **password-manager** origin (default in recent SDK versions: `https://ra
 
 **Important:** `RANBVAL_HOST` must be the **password-manager** origin (telemetry + repo policy). Do not point it at the auth service; that URL does not ingest telemetry.
 
+**SSL errors on macOS** (`CERTIFICATE_VERIFY_FAILED`): the SDK depends on `certifi` for HTTPS to telemetry and repo-policy. Run `pip install -U certifi ranbval-sdk` or use the Python.org installer’s “Install Certificates” command if issues persist.
+
 For the full ingest schema, pagination, and dashboard behavior, see the **[ranbval-password-manager README](../ranbval-password-manager/README.md)** (Telemetry section).
 
 ## Git remote allowlist

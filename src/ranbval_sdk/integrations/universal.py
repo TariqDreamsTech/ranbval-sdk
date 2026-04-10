@@ -10,6 +10,7 @@ from typing import Type, Any, Optional
 
 from ranbval_sdk.crypto import safe_decrypt
 from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST, warn_telemetry_send_failed
+from ranbval_sdk import http_tls
 
 def _get_git_remote() -> str | None:
     try:
@@ -83,7 +84,7 @@ def _send_telemetry(salt: str, model: str, host_url: str):
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with http_tls.urlopen(req, timeout=5) as resp:
             if resp.status == 200:
                 print(f"\n[Ranbval] Platform Telemetry Synced: {model}")
     except Exception as e:

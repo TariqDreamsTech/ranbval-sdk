@@ -7,6 +7,7 @@ import openai
 
 from ranbval_sdk.crypto import safe_decrypt
 from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST, warn_telemetry_send_failed
+from ranbval_sdk import http_tls
 from ranbval_sdk.repo_policy import assert_repo_allowed_for_decrypt
 
 _telemetry_queue: SimpleQueue | None = None
@@ -134,7 +135,7 @@ def _telemetry_worker_loop() -> None:
                 method="POST",
             )
             t0 = time.perf_counter()
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with http_tls.urlopen(req, timeout=5) as resp:
                 if resp.status == 200:
                     resp.read()
                     client._telemetry_roundtrip_ms = int(
