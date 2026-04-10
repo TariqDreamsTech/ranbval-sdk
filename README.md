@@ -3,11 +3,34 @@
 A secure, fully Zero-Memory execution wrapper for AI and generic API clients. 
 Instead of storing plaintext credentials in `os.environ`, this SDK keeps them completely invisible. It intercepts the client construction, performs a blind PBKDF2 decryption in-memory at runtime, securely passes the decrypted credential only to the relevant library, and immediately purges it.
 
+## Config: `.ranbval` (replaces juggling `.env` in code)
+
+On **`import ranbval_sdk`**, the SDK looks for a **`.ranbval`** file in the current working directory, then each parent directory, and loads `KEY=value` lines into `os.environ` (same spirit as dotenv).
+
+- **Plaintext** variables (e.g. `RANBVAL_VAULT_SECRET`, optional third-party keys) are stored **as-is** in the file.
+- **Ranbval-encoded** values (`ranbval.noise.blob.ahsan`) stay **opaque on disk**; the real secret exists only briefly in memory when you call the provider.
+- **`RANBVAL_HOST`** is optional — if omitted, the SDK uses the **hosted password-manager** default (no prompt).
+- **No interactive prompts** for vault password or host.
+
+Copy [`.ranbval.example`](.ranbval.example) to **`.ranbval`**, fill it, add `.ranbval` to **`.gitignore`**. You can still set variables in the real environment (e.g. CI); by default the SDK **does not** override already-set env vars.
+
+To force reload or use a specific path: `from ranbval_sdk import load_ranbval; load_ranbval("/path/to/.ranbval", override=True)`.
+
 ## Quick Start (Pre-Built Clients)
 
 For the most popular SDKs, we offer drop-in replacements. Simply swap your import and let Ranbval handle the encryption boundary without changing your codebase format.
 
 ### OpenAI
+```python
+from ranbval_sdk import SecureOpenAI
+
+# Ensure .ranbval exists with OPENAI_API_KEY and RANBVAL_VAULT_SECRET (see .ranbval.example)
+client = SecureOpenAI()
+client.chat.completions.create(model="gpt-4", ...)
+```
+
+Or set variables manually (e.g. notebooks):
+
 ```python
 import os
 from ranbval_sdk import SecureOpenAI
@@ -16,8 +39,6 @@ os.environ["OPENAI_API_KEY"] = "ranbval.xxxxxxxxxx.[BLOB].ahsan"
 os.environ["RANBVAL_VAULT_SECRET"] = "your_master_password"
 
 client = SecureOpenAI()
-# Uses native standard client methods safely behind the scenes
-client.chat.completions.create(model="gpt-4", ...) 
 ```
 
 ### Anthropic / Mistral / Supabase

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ranbval-sdk"
-version = "0.2.12"
+version = "0.2.14"
 description = "Ranbval Runtime Blind Decryption Python SDK"
 authors = ["Ahsan Tariq", "Hussnain Tariq", "Sundas Tariq"]
 readme = "README.md"
