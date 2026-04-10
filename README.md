@@ -56,6 +56,9 @@ Pre-built clients enqueue **usage and security metadata** to your Ranbval API (`
 |----------|---------|
 | `RANBVAL_HOST` | Password-manager origin (no `/api` suffix). Defaults to the hosted service; set to `http://localhost:8006` for local backends. |
 | `RANBVAL_TELEMETRY` | `0`, `false`, `off` — disable telemetry entirely |
+| `RANBVAL_TELEMETRY_DEBUG` | `1` / `true` — print failures from `POST …/api/telemetry` to stderr (wrong `RANBVAL_HOST`, network, etc.) |
+
+**Important:** `RANBVAL_HOST` must be the **password-manager** origin (telemetry + repo policy). Do not point it at the auth service; that URL does not ingest telemetry.
 
 For the full ingest schema, pagination, and dashboard behavior, see the **[ranbval-password-manager README](../ranbval-password-manager/README.md)** (Telemetry section).
 

@@ -6,7 +6,7 @@ from queue import SimpleQueue
 import openai
 
 from ranbval_sdk.crypto import safe_decrypt
-from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST
+from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST, warn_telemetry_send_failed
 from ranbval_sdk.repo_policy import assert_repo_allowed_for_decrypt
 
 _telemetry_queue: SimpleQueue | None = None
@@ -144,8 +144,8 @@ def _telemetry_worker_loop() -> None:
                         f"\n[Ranbval] Telemetry Synced: {model} "
                         f"({prompt_tokens}+{completion_tokens} tokens)"
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            warn_telemetry_send_failed(host, e)
 
 
 class SecureOpenAI(openai.OpenAI):

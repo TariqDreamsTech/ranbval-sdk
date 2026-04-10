@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from typing import Type, Any, Optional
 
 from ranbval_sdk.crypto import safe_decrypt
-from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST
+from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST, warn_telemetry_send_failed
 
 def _get_git_remote() -> str | None:
     try:
@@ -85,9 +85,9 @@ def _send_telemetry(salt: str, model: str, host_url: str):
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
             if resp.status == 200:
-                print(f"\\n[Ranbval] Platform Telemetry Synced: {model}")
+                print(f"\n[Ranbval] Platform Telemetry Synced: {model}")
     except Exception as e:
-        pass
+        warn_telemetry_send_failed(host_url, e)
 
 def build_secure_client(SDKClass: Type[Any], env_var_name: str, key_kwarg: str, method_path_to_patch: Optional[str] = None) -> Type[Any]:
     """
