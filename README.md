@@ -40,6 +40,7 @@ See [`.ranbval.example`](.ranbval.example). Add `.ranbval.local` and `*.local` t
 Use **`secure_client("openai")`**, **`secure_client("anthropic")`**, etc. You do **not** need a different import/class per vendor—only the provider string (and optional `env_var` if your key is not under the default name).
 
 ```python
+import os
 from ranbval_sdk import load_ranbval, secure_client
 
 load_ranbval()
