@@ -35,9 +35,30 @@ Helpers: `find_ranbval_directory()`, `find_ranbval_file()`, `resolve_ranbval_mod
 
 See [`.ranbval.example`](.ranbval.example). Add `.ranbval.local` and `*.local` to **`.gitignore`**.
 
-## Quick Start (Pre-Built Clients)
+## Quick Start — one function, any built-in provider
 
-For the most popular SDKs, we offer drop-in replacements. Simply swap your import and let Ranbval handle the encryption boundary without changing your codebase format.
+Use **`secure_client("openai")`**, **`secure_client("anthropic")`**, etc. You do **not** need a different import/class per vendor—only the provider string (and optional `env_var` if your key is not under the default name).
+
+```python
+from ranbval_sdk import load_ranbval, secure_client
+
+load_ranbval()
+gpt = secure_client("openai")
+gpt.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "user", "content": "hi"}])
+
+claude = secure_client("anthropic")
+# mistral = secure_client("mistral")
+# sb = secure_client("supabase", supabase_url=os.environ["SUPABASE_URL"])
+
+# Custom env name for the same provider:
+# secure_client("openai", env_var="MY_LLM_KEY")
+```
+
+**Production:** same code; use `load_ranbval(mode="production")` or `RANBVAL_ENV=production` and layered `.ranbval.production` — nothing “special” breaks prod; unset vars still fall through to defaults (e.g. hosted `RANBVAL_HOST`).
+
+## Pre-built classes (optional)
+
+You can still import **`SecureOpenAI`**, **`SecureAnthropic`**, etc. if you prefer explicit types.
 
 ### OpenAI
 ```python
