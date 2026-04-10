@@ -1,8 +1,8 @@
 # Ranbval Python SDK
 
-Decrypt Ranbval vault tokens in memory, optional telemetry to your password-manager, repo allowlist checks, and layered **`.ranbval*`** config.
+Load layered **`.ranbval*`** into the environment, decrypt **`ranbval.*`** tokens when **you** call **`safe_decrypt`**, and optionally **`emit_telemetry`** so your password-manager sees usage — with **any** HTTP client or vendor SDK you already use.
 
-**This package does not depend on OpenAI, Stripe, Anthropic, Mistral, or Supabase.** You `pip install` whichever vendor you use, then pass that SDK’s class to **`secure_client`** or **`build_secure_client`**.
+**No vendor SDKs are bundled.** OpenAI / Stripe / custom `requests` flows are all the same story: load env → call your API → ping telemetry if you want the Live Monitor.
 
 ## Install
 
@@ -31,7 +31,39 @@ Merge order (later overrides earlier): `.ranbval` → `.ranbval.{mode}` → `.ra
 
 See [`.ranbval.example`](.ranbval.example). Add `.ranbval.local` to **`.gitignore`**.
 
-## Quick start — any SDK (OpenAI, Stripe, …)
+## Quick start — env load + your own client + telemetry
+
+`.ranbval` keeps **`ranbval.*`** tokens as-is in the environment (not decrypted at load time). You decrypt right before the call, then tell Ranbval a request happened:
+
+```python
+import os
+import openai
+from ranbval_sdk import load_ranbval, safe_decrypt, emit_telemetry
+
+load_ranbval()
+raw = os.environ["OPENAI_API_KEY"]
+secret = os.environ["RANBVAL_VAULT_SECRET"]
+api_key = safe_decrypt(raw, secret) if raw.startswith("ranbval.") else raw
+
+client = openai.OpenAI(api_key=api_key)
+resp = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "hi"}],
+)
+emit_telemetry(
+    vault_token_env="OPENAI_API_KEY",
+    model_used="openai.chat.completions",
+    prompt_tokens=resp.usage.prompt_tokens,
+    completion_tokens=resp.usage.completion_tokens,
+    background=True,
+)
+```
+
+Same idea with **`requests`**, **`httpx`**, or an internal microservice: decrypt (if needed) → call → **`emit_telemetry(...)`** with a label in **`model_used`**. If the env var is not a **`ranbval.*`** token, pass **`client_salt="..."`** explicitly instead of **`vault_token_env`**.
+
+## Optional — auto-wrap any SDK class
+
+If you prefer Ranbval to inject the key and optionally patch one method for background telemetry:
 
 ```python
 import openai
@@ -87,7 +119,7 @@ plain = safe_decrypt("ranbval.noise.blob.ahsan", os.environ["RANBVAL_VAULT_SECRE
 
 ## Telemetry
 
-When you pass **`method_path_to_patch`**, the wrapper posts **platform-style** metadata to `POST {RANBVAL_HOST}/api/telemetry` on a **background thread** after that method returns (no token usage parsing — that stays generic).
+**`emit_telemetry`** and **`secure_client(..., method_path_to_patch=...)`** both POST to `POST {RANBVAL_HOST}/api/telemetry`. Use **`emit_telemetry`** when you own the HTTP/SDK call; use **`method_path_to_patch`** when you want a background ping after one wrapped method returns (generic counts unless you pass token fields yourself via **`emit_telemetry`**).
 
 | Variable | Meaning |
 |----------|---------|

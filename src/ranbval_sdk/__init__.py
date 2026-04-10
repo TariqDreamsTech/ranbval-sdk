@@ -1,4 +1,4 @@
-"""Ranbval SDK — vault decrypt + config; bring your own OpenAI/Stripe/etc. packages."""
+"""Ranbval SDK — load ``.ranbval*`` into env, decrypt vault tokens, optional telemetry."""
 
 from ranbval_sdk.crypto import safe_decrypt
 
@@ -9,10 +9,13 @@ from ranbval_sdk.dot_ranbval import (
     resolve_ranbval_mode,
 )
 
+from ranbval_sdk.telemetry import emit_telemetry
+
 from .integrations.factory import secure_client
 from .integrations.universal import build_secure_client
 
 __all__ = [
+    "emit_telemetry",
     "safe_decrypt",
     "build_secure_client",
     "secure_client",

@@ -1,94 +1,21 @@
 import os
-import sys
 import threading
-import json
-import socket
-import time
-import urllib.request
-from urllib.parse import urlparse
 from typing import Type, Any, Optional
 
 from ranbval_sdk.crypto import safe_decrypt
-from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST, warn_telemetry_send_failed
-from ranbval_sdk import http_tls
+from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST
+from ranbval_sdk.telemetry import emit_telemetry
 
-def _get_git_remote() -> str | None:
-    try:
-        import subprocess
-        return subprocess.check_output(
-            ["git", "config", "--get", "remote.origin.url"],
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).strip()
-    except Exception:
-        return None
 
-def _get_git_branch() -> str | None:
-    try:
-        import subprocess
-        return subprocess.check_output(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).strip()
-    except Exception:
-        return None
-
-def _sdk_version() -> str:
-    try:
-        from importlib.metadata import version
-        return version("ranbval-sdk")
-    except Exception:
-        return ""
-
-def _send_telemetry(salt: str, model: str, host_url: str):
-    """Fire-and-forget telemetry specifically for generic platform invocations (no token counts)."""
-    try:
-        repo_path = os.getcwd()
-        machine_name = socket.gethostname()
-        git_url = _get_git_remote()
-        
-        parsed = urlparse(host_url)
-        transport = (parsed.scheme or "http").lower()
-        ci_environment = any(
-            os.environ.get(k)
-            for k in ("CI", "GITHUB_ACTIONS", "GITLAB_CI", "BUILDKITE", "CIRCLECI", "JENKINS_URL")
-        )
-        
-        sec = {
-            "event_kind": "platform.invocation",
-            "sdk_version": _sdk_version(),
-            "client_platform": sys.platform,
-            "python_version": sys.version.split()[0],
-            "transport": transport,
-            "vault_token_format": "ranbval",
-            "git_branch": _get_git_branch(),
-            "ci_environment": bool(ci_environment),
-        }
-
-        payload = {
-            "client_salt": salt,
-            "machine_name": machine_name,
-            "repo_path": repo_path,
-            "git_url": git_url,
-            "model_used": model, # E.g., "api.anthropic.com" or "api.stripe.com"
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "security": sec,
-        }
-
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            f"{host_url}/api/telemetry",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with http_tls.urlopen(req, timeout=5) as resp:
-            if resp.status == 200:
-                print(f"\n[Ranbval] Platform Telemetry Synced: {model}")
-    except Exception as e:
-        warn_telemetry_send_failed(host_url, e)
+def _send_telemetry(salt: str, model: str, host_url: str) -> None:
+    """Background thread target: one telemetry row for auto-patched SDK calls."""
+    emit_telemetry(
+        client_salt=salt,
+        model_used=model,
+        host_url=host_url,
+        event_kind="platform.invocation",
+        background=False,
+    )
 
 def build_secure_client(SDKClass: Type[Any], env_var_name: str, key_kwarg: str, method_path_to_patch: Optional[str] = None) -> Type[Any]:
     """
