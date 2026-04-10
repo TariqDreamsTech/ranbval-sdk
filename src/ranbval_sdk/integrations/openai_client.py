@@ -3,7 +3,10 @@ import sys
 import threading
 from queue import SimpleQueue
 
-import openai
+try:
+    import openai as _openai_mod
+except ImportError:  # optional extra: pip install "ranbval-sdk[openai]"
+    _openai_mod = None
 
 from ranbval_sdk.crypto import safe_decrypt
 from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST, warn_telemetry_send_failed
@@ -149,62 +152,69 @@ def _telemetry_worker_loop() -> None:
             warn_telemetry_send_failed(host, e)
 
 
-class SecureOpenAI(openai.OpenAI):
-    """
-    A drop-in replacement for `openai.OpenAI` that intercepts
-    Ranbval (rbv1.*) encoded API keys from .env or args, decrypts
-    them entirely in-memory at runtime, and seamlessly initializes
-    the standard OpenAI client.
-    """
+if _openai_mod is not None:
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._telemetry_roundtrip_ms = None
-        encoded_key = os.environ.get("OPENAI_API_KEY", "")
-        secret = os.environ.get("RANBVAL_VAULT_SECRET", "ranbval")
-        host = os.environ.get("RANBVAL_HOST", DEFAULT_RANBVAL_HOST)
+    class SecureOpenAI(_openai_mod.OpenAI):
+        """
+        A drop-in replacement for `openai.OpenAI` that intercepts
+        Ranbval (rbv1.*) encoded API keys from .env or args, decrypts
+        them entirely in-memory at runtime, and seamlessly initializes
+        the standard OpenAI client.
 
-        if not encoded_key:
-            raise ValueError("No OPENAI_API_KEY found or provided.")
+        Requires: ``pip install "ranbval-sdk[openai]"``.
+        """
 
-        if encoded_key.startswith("ranbval."):
-            if not secret:
-                raise ValueError(
-                    "You supplied an Encrypted Ranbval Token but no RANBVAL_VAULT_SECRET "
-                    "was found in .env or passed as an argument."
-                )
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._telemetry_roundtrip_ms = None
+            encoded_key = os.environ.get("OPENAI_API_KEY", "")
+            secret = os.environ.get("RANBVAL_VAULT_SECRET", "ranbval")
+            host = os.environ.get("RANBVAL_HOST", DEFAULT_RANBVAL_HOST)
 
-            parts = encoded_key.split(".")
-            if len(parts) < 2:
-                raise ValueError("Invalid Ranbval token format.")
-            client_salt = parts[1]
-            assert_repo_allowed_for_decrypt(host, client_salt)
+            if not encoded_key:
+                raise ValueError("No OPENAI_API_KEY found or provided.")
 
-            decrypted_key = safe_decrypt(encoded_key, secret)
+            if encoded_key.startswith("ranbval."):
+                if not secret:
+                    raise ValueError(
+                        "You supplied an Encrypted Ranbval Token but no RANBVAL_VAULT_SECRET "
+                        "was found in .env or passed as an argument."
+                    )
 
-            super().__init__(api_key=decrypted_key, **kwargs)
-            self._ranbval_salt = client_salt
-            self._vault_token_format = "ranbval"
-            self._patch_completions()
-        else:
-            super().__init__(api_key=encoded_key, **kwargs)
-            self._ranbval_salt = None
-            self._vault_token_format = "legacy_sk"
+                parts = encoded_key.split(".")
+                if len(parts) < 2:
+                    raise ValueError("Invalid Ranbval token format.")
+                client_salt = parts[1]
+                assert_repo_allowed_for_decrypt(host, client_salt)
 
-    def _patch_completions(self):
-        telem_on = _telemetry_enabled()
-        if telem_on:
-            _ensure_telemetry_worker_started()
+                decrypted_key = safe_decrypt(encoded_key, secret)
 
-        original_create = self.chat.completions.create
-        q = _telemetry_queue
+                super().__init__(api_key=decrypted_key, **kwargs)
+                self._ranbval_salt = client_salt
+                self._vault_token_format = "ranbval"
+                self._patch_completions()
+            else:
+                super().__init__(api_key=encoded_key, **kwargs)
+                self._ranbval_salt = None
+                self._vault_token_format = "legacy_sk"
 
-        def patched_create(*args, **kwargs):
-            # Read model before the network call so the post-response path is minimal.
-            model = kwargs.get("model", "unknown")
-            res = original_create(*args, **kwargs)
-            if self._ranbval_salt and telem_on:
-                q.put((self, model, res))
-            return res
+        def _patch_completions(self):
+            telem_on = _telemetry_enabled()
+            if telem_on:
+                _ensure_telemetry_worker_started()
 
-        self.chat.completions.create = patched_create
+            original_create = self.chat.completions.create
+            q = _telemetry_queue
+
+            def patched_create(*args, **kwargs):
+                # Read model before the network call so the post-response path is minimal.
+                model = kwargs.get("model", "unknown")
+                res = original_create(*args, **kwargs)
+                if self._ranbval_salt and telem_on:
+                    q.put((self, model, res))
+                return res
+
+            self.chat.completions.create = patched_create
+
+else:
+    SecureOpenAI = None  # type: ignore[misc, assignment]

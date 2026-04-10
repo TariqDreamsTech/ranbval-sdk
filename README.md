@@ -3,6 +3,26 @@
 A secure, fully Zero-Memory execution wrapper for AI and generic API clients. 
 Instead of storing plaintext credentials in `os.environ`, this SDK keeps them completely invisible. It intercepts the client construction, performs a blind PBKDF2 decryption in-memory at runtime, securely passes the decrypted credential only to the relevant library, and immediately purges it.
 
+## Install (core vs vendor SDKs)
+
+**Core only** — decrypt Ranbval tokens, `.ranbval` config, telemetry, `build_secure_client` / `secure_client(sdk_class=...)` with **your** installed library (e.g. you already have `stripe`):
+
+```bash
+pip install ranbval-sdk
+```
+
+**Optional extras** — only install the vendor you use:
+
+```bash
+pip install "ranbval-sdk[openai]"
+pip install "ranbval-sdk[anthropic]"
+pip install "ranbval-sdk[mistral]"
+pip install "ranbval-sdk[supabase]"
+pip install "ranbval-sdk[all]"
+```
+
+Without an extra, `secure_client("openai")` / `SecureOpenAI` will raise a clear `ImportError` telling you which extra to add.
+
 ## Config: layered `.ranbval*` (like `.env` / `.env.local`)
 
 **You import and call `load_ranbval()` yourself** (no automatic load on `import ranbval_sdk`).

@@ -114,6 +114,10 @@ def secure_client(
     def _build_openai() -> Any:
         from ranbval_sdk.integrations.openai_client import SecureOpenAI
 
+        if SecureOpenAI is None:
+            raise ImportError(
+                'Install the OpenAI SDK: pip install "ranbval-sdk[openai]"',
+            )
         return SecureOpenAI(**kwargs)
 
     def _build_anthropic() -> Any:
