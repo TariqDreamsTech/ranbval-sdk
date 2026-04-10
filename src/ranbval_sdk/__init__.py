@@ -1,4 +1,6 @@
-"""Ranbval SDK — call ``load_ranbval()`` before using clients (see ``dot_ranbval``)."""
+"""Ranbval SDK — vault decrypt + config; bring your own OpenAI/Stripe/etc. packages."""
+
+from ranbval_sdk.crypto import safe_decrypt
 
 from ranbval_sdk.dot_ranbval import (
     find_ranbval_directory,
@@ -7,18 +9,13 @@ from ranbval_sdk.dot_ranbval import (
     resolve_ranbval_mode,
 )
 
-from .integrations.openai_client import SecureOpenAI
 from .integrations.factory import secure_client
 from .integrations.universal import build_secure_client
-from .integrations.platforms import SecureAnthropic, SecureMistral, SecureSupabase
 
 __all__ = [
-    "SecureOpenAI",
-    "secure_client",
+    "safe_decrypt",
     "build_secure_client",
-    "SecureAnthropic",
-    "SecureMistral",
-    "SecureSupabase",
+    "secure_client",
     "load_ranbval",
     "find_ranbval_file",
     "find_ranbval_directory",

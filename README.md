@@ -1,169 +1,109 @@
 # Ranbval Python SDK
 
-A secure, fully Zero-Memory execution wrapper for AI and generic API clients. 
-Instead of storing plaintext credentials in `os.environ`, this SDK keeps them completely invisible. It intercepts the client construction, performs a blind PBKDF2 decryption in-memory at runtime, securely passes the decrypted credential only to the relevant library, and immediately purges it.
+Decrypt Ranbval vault tokens in memory, optional telemetry to your password-manager, repo allowlist checks, and layered **`.ranbval*`** config.
 
-## Install (core vs vendor SDKs)
+**This package does not depend on OpenAI, Stripe, Anthropic, Mistral, or Supabase.** You `pip install` whichever vendor you use, then pass that SDK’s class to **`secure_client`** or **`build_secure_client`**.
 
-**Core only** — decrypt Ranbval tokens, `.ranbval` config, telemetry, `build_secure_client` / `secure_client(sdk_class=...)` with **your** installed library (e.g. you already have `stripe`):
+## Install
 
 ```bash
 pip install ranbval-sdk
 ```
 
-**Optional extras** — only install the vendor you use:
+Then in your project (examples):
 
 ```bash
-pip install "ranbval-sdk[openai]"
-pip install "ranbval-sdk[anthropic]"
-pip install "ranbval-sdk[mistral]"
-pip install "ranbval-sdk[supabase]"
-pip install "ranbval-sdk[all]"
+pip install openai
+# or: pip install anthropic stripe …
 ```
 
-Without an extra, `secure_client("openai")` / `SecureOpenAI` will raise a clear `ImportError` telling you which extra to add.
+## Config: layered `.ranbval*`
 
-## Config: layered `.ranbval*` (like `.env` / `.env.local`)
-
-**You import and call `load_ranbval()` yourself** (no automatic load on `import ranbval_sdk`).
+Call **`load_ranbval()`** yourself (not on import).
 
 ```python
-from ranbval_sdk import load_ranbval, SecureOpenAI
+from ranbval_sdk import load_ranbval
 
-load_ranbval()  # merges files, see below
-client = SecureOpenAI()
+load_ranbval()
 ```
 
-From the **current working directory upward**, the SDK finds the first directory that contains `.ranbval` or any `.ranbval.*` file, then **merges** these files **in order** (later overrides earlier for the same key):
+Merge order (later overrides earlier): `.ranbval` → `.ranbval.{mode}` → `.ranbval.local` → `.ranbval.{mode}.local`. Mode from `load_ranbval(mode="production")` or `RANBVAL_ENV` / `ENVIRONMENT` / `ENV` (default `development`).
 
-| Order | File | Purpose |
-|------:|------|---------|
-| 1 | `.ranbval` | Shared defaults |
-| 2 | `.ranbval.development` or `.ranbval.production` | Picked by **mode** (see below) |
-| 3 | `.ranbval.local` | Machine-only overrides (gitignore) |
-| 4 | `.ranbval.development.local` / `.ranbval.production.local` | Mode + local |
+See [`.ranbval.example`](.ranbval.example). Add `.ranbval.local` to **`.gitignore`**.
 
-**Mode** (`development` vs `production`): `load_ranbval(mode="production")`, or set `RANBVAL_ENV` / `ENVIRONMENT` / `ENV` **before** calling `load_ranbval()`, or default is `development`.
-
-- **Plaintext** variables stay readable in the file; **Ranbval tokens** stay encoded on disk; plaintext API keys exist only briefly in memory when used.
-- **`RANBVAL_HOST`** optional — SDK defaults to the hosted password-manager if unset.
-- **`override=True`**: merged file values always replace `os.environ`; default `False` keeps existing shell/CI env vars.
-
-Single file only: `load_ranbval("/path/to/.ranbval")`.
-
-Helpers: `find_ranbval_directory()`, `find_ranbval_file()`, `resolve_ranbval_mode()`.
-
-See [`.ranbval.example`](.ranbval.example). Add `.ranbval.local` and `*.local` to **`.gitignore`**.
-
-## Quick Start — one function, any built-in provider
-
-Use **`secure_client("openai")`**, **`secure_client("anthropic")`**, etc. You do **not** need a different import/class per vendor—only the provider string (and optional `env_var` if your key is not under the default name).
+## Quick start — any SDK (OpenAI, Stripe, …)
 
 ```python
-import os
+import openai
 from ranbval_sdk import load_ranbval, secure_client
 
 load_ranbval()
-gpt = secure_client("openai")
-gpt.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "user", "content": "hi"}])
-
-claude = secure_client("anthropic")
-# mistral = secure_client("mistral")
-# sb = secure_client("supabase", supabase_url=os.environ["SUPABASE_URL"])
-
-# Custom env name for the same provider:
-# secure_client("openai", env_var="MY_LLM_KEY")
-
-# Any other SDK — same function, no separate build_secure_client in your app:
-# import stripe
-# secure_client(sdk_class=stripe.StripeClient, env_var="STRIPE_SECRET_KEY", key_kwarg="api_key")
-```
-
-**Custom secrets:** put `STRIPE_SECRET_KEY=ranbval....ahsan` (or plain) in `.ranbval*`, then only `secure_client(sdk_class=..., env_var="STRIPE_SECRET_KEY", key_kwarg="api_key")` — you never import `build_secure_client` yourself.
-
-**Production:** same code; use `load_ranbval(mode="production")` or `RANBVAL_ENV=production` and layered `.ranbval.production` — nothing “special” breaks prod; unset vars still fall through to defaults (e.g. hosted `RANBVAL_HOST`).
-
-## Pre-built classes (optional)
-
-You can still import **`SecureOpenAI`**, **`SecureAnthropic`**, etc. if you prefer explicit types.
-
-### OpenAI
-```python
-from ranbval_sdk import load_ranbval, SecureOpenAI
-
-load_ranbval()
-client = SecureOpenAI()
-client.chat.completions.create(model="gpt-4", ...)
-```
-
-Or set variables manually (e.g. notebooks):
-
-```python
-import os
-from ranbval_sdk import SecureOpenAI
-
-os.environ["OPENAI_API_KEY"] = "ranbval.xxxxxxxxxx.[BLOB].ahsan"
-os.environ["RANBVAL_VAULT_SECRET"] = "your_master_password"
-
-client = SecureOpenAI()
-```
-
-### Anthropic / Mistral / Supabase
-We offer similarly secure blind wrappers for other leading SDKs:
-```python
-from ranbval_sdk import load_ranbval, SecureAnthropic, SecureMistral, SecureSupabase
-
-load_ranbval()
-anthropic_client = SecureAnthropic()
-mistral_client = SecureMistral()
-```
-
-## Universal Custom Platform Wrapper
-
-Prefer **`secure_client(sdk_class=..., env_var=..., key_kwarg=...)`** so you do not define a one-off wrapper class per vendor:
-
-```python
-from ranbval_sdk import load_ranbval, secure_client
-import stripe
-
-load_ranbval()
-stripe_client = secure_client(
-    sdk_class=stripe.StripeClient,
-    env_var="STRIPE_SECRET_KEY",
+client = secure_client(
+    openai.OpenAI,
+    env_var="OPENAI_API_KEY",
     key_kwarg="api_key",
-    # method_path_to_patch="charges.create",  # optional telemetry hook
+    method_path_to_patch="chat.completions.create",  # optional: telemetry after each call
+)
+client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "hi"}],
 )
 ```
 
-Lower-level: **`build_secure_client`** still exists if you want a reusable class alias (e.g. `SecureStripe = build_secure_client(...)`).
+```python
+import anthropic
+from ranbval_sdk import load_ranbval, secure_client
+
+load_ranbval()
+claude = secure_client(
+    anthropic.Anthropic,
+    env_var="ANTHROPIC_API_KEY",
+    key_kwarg="api_key",
+    method_path_to_patch="messages.create",
+)
+```
+
+```python
+import stripe
+from ranbval_sdk import load_ranbval, secure_client
+
+load_ranbval()
+stripe_client = secure_client(
+    stripe.StripeClient,
+    env_var="STRIPE_SECRET_KEY",
+    key_kwarg="api_key",
+)
+```
+
+Lower-level: **`build_secure_client(SDKClass, env_var_name, key_kwarg, method_path_to_patch=None)`** returns a **class** you can reuse or subclass.
+
+## Low-level decrypt
+
+```python
+from ranbval_sdk import safe_decrypt
+
+plain = safe_decrypt("ranbval.noise.blob.ahsan", os.environ["RANBVAL_VAULT_SECRET"])
+```
 
 ## Telemetry
 
-Pre-built clients enqueue **usage and security metadata** to your Ranbval API (`POST {RANBVAL_HOST}/api/telemetry`) on a **background worker thread** so model calls are not blocked.
-
-### Hosted production (dashboard online)
-
-Use the **password-manager** origin (default in recent SDK versions: `https://ranbval-password-manager.onrender.com`). The **auth** URL is only for login in the browser; telemetry never goes there. Your Ranbval token must come from the **same** Supabase project as the dashboard, or the server will not attach events to your project.
+When you pass **`method_path_to_patch`**, the wrapper posts **platform-style** metadata to `POST {RANBVAL_HOST}/api/telemetry` on a **background thread** after that method returns (no token usage parsing — that stays generic).
 
 | Variable | Meaning |
 |----------|---------|
-| `RANBVAL_HOST` | Password-manager origin (no `/api` suffix). Defaults to the hosted service; set to `http://localhost:8006` for local backends. |
-| `RANBVAL_TELEMETRY` | `0`, `false`, `off` — disable telemetry entirely |
-| `RANBVAL_TELEMETRY_DEBUG` | `1` / `true` — print failures from `POST …/api/telemetry` to stderr (wrong `RANBVAL_HOST`, network, etc.) |
+| `RANBVAL_HOST` | Password-manager origin (no `/api`). Defaults to hosted service. |
+| `RANBVAL_TELEMETRY` | `0` / `false` / `off` — disable |
+| `RANBVAL_TELEMETRY_DEBUG` | `1` / `true` — print POST failures to stderr |
 
-**Important:** `RANBVAL_HOST` must be the **password-manager** origin (telemetry + repo policy). Do not point it at the auth service; that URL does not ingest telemetry.
+**Auth service URL is not** `RANBVAL_HOST` — telemetry goes to the password-manager API only.
 
-**SSL errors on macOS** (`CERTIFICATE_VERIFY_FAILED`): the SDK depends on `certifi` for HTTPS to telemetry and repo-policy. Run `pip install -U certifi ranbval-sdk` or use the Python.org installer’s “Install Certificates” command if issues persist.
-
-For the full ingest schema, pagination, and dashboard behavior, see the **[ranbval-password-manager README](../ranbval-password-manager/README.md)** (Telemetry section).
+**SSL on macOS:** `certifi` is used for HTTPS; `pip install -U certifi` if verify fails.
 
 ## Git remote allowlist
 
-If the project owner adds allowed repo URLs in the dashboard (or via `POST /api/projects/{id}/whitelist`), the SDK calls **`GET /api/public/repo-policy?client_salt=…`** and compares the result to the local **`git remote get-url origin`**. When **`enforce_allowlist`** is true (non-empty list), decrypt fails with a clear **`PermissionError`** before any provider API call.
-
 | Variable | Meaning |
 |----------|---------|
-| `RANBVAL_HOST` | Same origin as telemetry (paths like `/api/public/repo-policy` are appended internally). |
-| `RANBVAL_SKIP_REPO_CHECK` | Set to `1` / `true` to skip the check (development only; not for production). |
+| `RANBVAL_HOST` | Same origin as telemetry (`/api/public/repo-policy`). |
+| `RANBVAL_SKIP_REPO_CHECK` | `1` / `true` — skip (dev only). |
 
-Empty allowlist on the server means **no** client-side enforcement.
+See **[ranbval-password-manager README](../ranbval-password-manager/README.md)** for ingest schema and dashboard behavior.

@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "ranbval-sdk"
-version = "0.3.0"
-description = "Ranbval Runtime Blind Decryption Python SDK"
+version = "0.4.0"
+description = "Ranbval Runtime Blind Decryption Python SDK (no vendor SDK dependencies)"
 authors = ["Ahsan Tariq", "Hussnain Tariq", "Sundas Tariq"]
 readme = "README.md"
 build = "build.py"
@@ -10,17 +10,6 @@ build = "build.py"
 python = "^3.10"
 cryptography = "^42.0.0"
 certifi = ">=2024.0.0"
-openai = { version = "^1.12.0", optional = true }
-anthropic = { version = ">=0.18.0", optional = true }
-mistralai = { version = ">=1.0.0", optional = true }
-supabase = { version = ">=2.0.0", optional = true }
-
-[tool.poetry.extras]
-openai = ["openai"]
-anthropic = ["anthropic"]
-mistral = ["mistralai"]
-supabase = ["supabase"]
-all = ["openai", "anthropic", "mistralai", "supabase"]
 
 [build-system]
 requires = ["poetry-core>=1.0.0", "Cython>=3.0.0", "setuptools"]
