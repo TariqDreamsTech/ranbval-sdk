@@ -53,7 +53,13 @@ claude = secure_client("anthropic")
 
 # Custom env name for the same provider:
 # secure_client("openai", env_var="MY_LLM_KEY")
+
+# Any other SDK — same function, no separate build_secure_client in your app:
+# import stripe
+# secure_client(sdk_class=stripe.StripeClient, env_var="STRIPE_SECRET_KEY", key_kwarg="api_key")
 ```
+
+**Custom secrets:** put `STRIPE_SECRET_KEY=ranbval....ahsan` (or plain) in `.ranbval*`, then only `secure_client(sdk_class=..., env_var="STRIPE_SECRET_KEY", key_kwarg="api_key")` — you never import `build_secure_client` yourself.
 
 **Production:** same code; use `load_ranbval(mode="production")` or `RANBVAL_ENV=production` and layered `.ranbval.production` — nothing “special” breaks prod; unset vars still fall through to defaults (e.g. hosted `RANBVAL_HOST`).
 
@@ -94,23 +100,22 @@ mistral_client = SecureMistral()
 
 ## Universal Custom Platform Wrapper
 
-If you need to strictly encrypt secrets for an SDK that we don't natively ship (e.g. `Stripe`, `Twilio`, or internal APIs), you can use the Universal Integration Engine to wrap ANY Python class dynamically:
+Prefer **`secure_client(sdk_class=..., env_var=..., key_kwarg=...)`** so you do not define a one-off wrapper class per vendor:
 
 ```python
-from ranbval_sdk import load_ranbval, build_secure_client
+from ranbval_sdk import load_ranbval, secure_client
 import stripe
 
 load_ranbval()
-# Generates a Drop-in Secure Proxy for the Stripe SDK dynamically
-SecureStripe = build_secure_client(
-    SDKClass=stripe.StripeClient,
-    env_var_name="STRIPE_SECRET_KEY",
-    key_kwarg="api_key"
+stripe_client = secure_client(
+    sdk_class=stripe.StripeClient,
+    env_var="STRIPE_SECRET_KEY",
+    key_kwarg="api_key",
+    # method_path_to_patch="charges.create",  # optional telemetry hook
 )
-
-# Completely encrypted in ENV. Handled securely in-memory.
-stripe_client = SecureStripe()
 ```
+
+Lower-level: **`build_secure_client`** still exists if you want a reusable class alias (e.g. `SecureStripe = build_secure_client(...)`).
 
 ## Telemetry
 
