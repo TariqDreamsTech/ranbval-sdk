@@ -52,6 +52,10 @@ stripe_client = SecureStripe()
 
 Pre-built clients enqueue **usage and security metadata** to your Ranbval API (`POST {RANBVAL_HOST}/api/telemetry`) on a **background worker thread** so model calls are not blocked.
 
+### Hosted production (dashboard online)
+
+Use the **password-manager** origin (default in recent SDK versions: `https://ranbval-password-manager.onrender.com`). The **auth** URL is only for login in the browser; telemetry never goes there. Your Ranbval token must come from the **same** Supabase project as the dashboard, or the server will not attach events to your project.
+
 | Variable | Meaning |
 |----------|---------|
 | `RANBVAL_HOST` | Password-manager origin (no `/api` suffix). Defaults to the hosted service; set to `http://localhost:8006` for local backends. |
