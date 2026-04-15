@@ -1,5 +1,4 @@
 import base64
-import hashlib
 import os
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -9,6 +8,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST
 from ranbval_sdk.repo_policy import assert_repo_allowed_for_decrypt
 from ranbval_sdk.billing import assert_plan_active
+from ranbval_sdk.secret_string import SecretString
 
 
 def derive_key(password: str, salt_str: str) -> bytes:
@@ -35,10 +35,15 @@ def _enforce_billing(client_salt: str) -> None:
     assert_plan_active(client_salt)
 
 
-def safe_decrypt(copy_token: str, vault_secret: str) -> str:
+def safe_decrypt(copy_token: str, vault_secret: str) -> SecretString:
     """
-    Takes the encapsulated cryptographic identity token and performs zero-knowledge
-    in-memory envelope decryption utilizing PBKDF2 and AES-GCM.
+    Decrypt a Ranbval vault token.
+
+    Returns a SecretString — the plaintext is NEVER exposed via print/str/repr/logs.
+    To actually pass the value to an API or SDK:
+
+        secret = safe_decrypt(token, vault_secret)
+        client = openai.OpenAI(api_key=secret.use())   # ← only access point
     """
     packet_segments = copy_token.split(".")
     
@@ -83,7 +88,8 @@ def safe_decrypt(copy_token: str, vault_secret: str) -> str:
         # 3. Decrypt payload
         aesgcm = AESGCM(key)
         decrypted = aesgcm.decrypt(iv, ciphertext, None)
-        return decrypted.decode("utf-8")
+        return SecretString(decrypted.decode("utf-8"))
+    except (ValueError, KeyError):
+        raise
     except Exception as e:
-        print(f"DEBUG SDK DECRYPT FAIL: {str(e)}")
         raise ValueError("Decryption failed! Did you provide the correct E2E vault secret?") from e

@@ -27,6 +27,8 @@ from ranbval_sdk.billing import (
     plan_limits,
 )
 
+from ranbval_sdk.secret_string import SecretString
+
 from .integrations.factory import secure_client
 from .integrations.universal import build_secure_client
 
@@ -43,6 +45,8 @@ __all__ = [
     "assert_plan_active",
     "fetch_billing_status",
     "plan_limits",
+    # Secret wrapper
+    "SecretString",
     # HTTP integrations
     "build_secure_client",
     "secure_client",
