@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST
 from ranbval_sdk.repo_policy import assert_repo_allowed_for_decrypt
+from ranbval_sdk.billing import assert_plan_active
 
 
 def derive_key(password: str, salt_str: str) -> bytes:
@@ -29,6 +30,11 @@ def _enforce_repo_allowlist_if_configured(client_salt: str) -> None:
     assert_repo_allowed_for_decrypt(host, client_salt)
 
 
+def _enforce_billing(client_salt: str) -> None:
+    """Verify the vault owner has an active plan / trial before decrypting."""
+    assert_plan_active(client_salt)
+
+
 def safe_decrypt(copy_token: str, vault_secret: str) -> str:
     """
     Takes the encapsulated cryptographic identity token and performs zero-knowledge
@@ -44,6 +50,7 @@ def safe_decrypt(copy_token: str, vault_secret: str) -> str:
             if header != "ranbval":
                 raise ValueError("Corrupted cryptographic token identifier or signature matrix")
             _enforce_repo_allowlist_if_configured(noise)
+            _enforce_billing(noise)
             # If it's the old 5-part format, use the designated salt segment
             key = derive_key(vault_secret, salt)
             b64_payload = blob
@@ -61,6 +68,7 @@ def safe_decrypt(copy_token: str, vault_secret: str) -> str:
             raise ValueError("Corrupted cryptographic token identifier or signature matrix")
 
         _enforce_repo_allowlist_if_configured(noise_salt)
+        _enforce_billing(noise_salt)
         key = derive_key(vault_secret, noise_salt)
 
     # 2. Decode payload (IV + Ciphertext)

@@ -1,6 +1,24 @@
 # Ranbval Python runtime
 
-This package **loads layered `.ranbval*` config** into `os.environ`, **decrypts `ranbval.*` vault tokens** when your code calls `safe_decrypt`, and **optionally sends telemetry** to your Ranbval password-manager (Live Monitor). It does **not** bundle other vendors’ SDKs or HTTP stacks—only `cryptography` and `certifi`.
+This package merges **layered `.ranbval*` files** into `os.environ`, keeps **`ranbval.*` vault tokens opaque** until **`safe_decrypt`** runs, and can **optionally POST usage** to your Ranbval password manager (Live Monitor). It ships only **`cryptography`** and **`certifi`**—your app keeps its own HTTP client and vendor SDKs.
+
+---
+
+## Why we built Ranbval
+
+With so many LLM models and APIs available today, **managing secrets has become a nightmare**. Someone shares an API key, it gets forwarded, and suddenly **usage shows up on a bill nobody planned for**. It is hard to know **which API** is in use, **in which repository**, or **on which device**—and who actually burned the tokens.
+
+**That is why we built Ranbval.** It is a **security and monitoring layer** for API keys and secrets, not just another place to paste strings. Here is how it changes the game:
+
+- **Total control** — You decide **which Git repositories** may use a credential. If a repo is not authorized, the secret **cannot be used** for real API calls—even if a token or key string leaked.
+- **Encrypted secrets** — **No plaintext `.env` in source control.** Prefer `load_ranbval()` over scattering `load_dotenv()` everywhere: `.ranbval*` files hold config, and values shaped like `ranbval.<salt>.<ciphertext>.<label>` stay encrypted until your code explicitly decrypts them.
+- **Full monitoring** — **Telemetry and dashboards** tie usage back to credentials and context so you can see what happened—including failed or suspicious paths—instead of flying blind.
+
+**No more paying for other people’s usage. Your secrets, your rules.**
+
+The Python runtime is on PyPI as [`ranbval-sdk`](https://pypi.org/project/ranbval-sdk/). **Any HTTPS client** (including **n8n’s HTTP Request** node) can POST to the same telemetry API—see [n8n](#n8n-http-request--telemetry-over-https) below. Deeper no-code / REST tooling is still expanding.
+
+We are talking to **CEOs and investors** who want to back the next wave of API secret governance; if that is you and you want to connect, reach out through the channels listed on the main Ranbval / password-manager project.
 
 ---
 
@@ -147,6 +165,126 @@ If the credential is **not** a `ranbval.*` string, pass **`client_salt="..."`** 
 | `RANBVAL_TELEMETRY_DEBUG` | `1` / `true` — print telemetry failures to stderr. |
 
 HTTPS uses **`certifi`**; upgrade `certifi` if certificate verification fails on your machine.
+
+---
+
+## Test with `curl`: server lookup, telemetry (logs), and decryption
+
+**What you need from the vault**
+
+- A session whose stored credential looks like `ranbval.<salt>.<blob>.<label>` (copy the full string for decryption; for HTTP calls you only need **`<salt>`** — the segment between the first and second `.`).
+- **`RANBVAL_VAULT_SECRET`** — same secret you use with the Python SDK to decrypt (not sent in these `curl` commands).
+
+Set a base URL (**no** trailing slash, **no** extra `/api` on the variable):
+
+```bash
+export RANBVAL_HOST="https://ranbval-password-manager.onrender.com"   # or your self-hosted origin
+export YOUR_SALT="paste_salt_here"   # e.g. if token is ranbval.abcdef1234.xxx.yyy → abcdef1234
+```
+
+### 1) `curl` — confirm the password manager knows this token (session exists)
+
+Resolves the same way telemetry does (lookup by `ranbval.{salt}.%` in the database):
+
+```bash
+curl -sS "${RANBVAL_HOST}/api/public/repo-policy?client_salt=${YOUR_SALT}"
+```
+
+- **200** — JSON with `allowed_repos` and `enforce_allowlist` (allowlist rules for decrypt/telemetry).
+- **404** — `Unknown Ranbval session for this client salt` → wrong salt or no matching session.
+
+### 2) `curl` — send telemetry (HTTPS log line to Live Monitor)
+
+**POST** JSON to `/api/telemetry`. Minimal body only needs `client_salt`, `machine_name`, and `repo_path`:
+
+```bash
+curl -sS -X POST "${RANBVAL_HOST}/api/telemetry" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"client_salt\": \"${YOUR_SALT}\",
+    \"machine_name\": \"curl-test\",
+    \"repo_path\": \"$(pwd)\",
+    \"model_used\": \"curl.manual-test\",
+    \"prompt_tokens\": 0,
+    \"completion_tokens\": 0,
+    \"git_url\": \"$(git config --get remote.origin.url 2>/dev/null || echo '')\",
+    \"security\": {
+      \"event_kind\": \"custom.request\",
+      \"transport\": \"https\",
+      \"vault_token_format\": \"ranbval\",
+      \"client_platform\": \"curl\",
+      \"ci_environment\": false
+    }
+  }"
+```
+
+Expect JSON like `{"status":"ok","recorded_id":"…","is_authorized":true}`. If the project has an **allowed-repo list** and `git_url` does not match, `is_authorized` may be `false` but the attempt can still be stored / alerted—see the password-manager README.
+
+### 3) Prove **decryption** (not `curl` — local Python only)
+
+There is **no** public HTTP endpoint that returns your plaintext API key. Decryption runs in your process via **`safe_decrypt(token, RANBVAL_VAULT_SECRET)`** (after optional repo check against `RANBVAL_HOST`).
+
+```bash
+export RANBVAL_TOKEN='ranbval....'           # full token from the vault; avoid committing this
+export RANBVAL_VAULT_SECRET='...'          # your vault secret
+# export RANBVAL_SKIP_REPO_CHECK=1         # optional while testing outside an allowlisted git clone
+
+python -c "import os; from ranbval_sdk import safe_decrypt; p=safe_decrypt(os.environ['RANBVAL_TOKEN'], os.environ['RANBVAL_VAULT_SECRET']); print('decrypt_ok', len(p), 'chars')"
+```
+
+If this prints `decrypt_ok … chars`, the **encryption envelope** for that token matches your secret. Then **`curl` telemetry** (step 2) exercises the **HTTPS logging path** end-to-end.
+
+---
+
+## n8n: HTTP Request + telemetry over HTTPS
+
+The Live Monitor ingest URL is the same for Python and for **n8n**: **`POST https://<RANBVAL_HOST>/api/telemetry`** (no `/api` suffix in the host variable—only on the path). Your **vendor call** (OpenAI, Stripe, etc.) should use **HTTPS**; the **telemetry** call should also use **HTTPS** on your password-manager host. Both are ordinary TLS requests from n8n’s **HTTP Request** node.
+
+**Typical workflow**
+
+1. **HTTP Request** — Call the external API (HTTPS), using n8n credentials for the real API key.
+2. **HTTP Request** — `POST` JSON to `https://<RANBVAL_HOST>/api/telemetry` so usage is logged the same way as `emit_telemetry`.
+
+Chain **2** after **1** so telemetry runs when the request finishes (or only on success, using n8n’s error branch / IF node if you want). n8n does not support a single node that “wraps” arbitrary URLs with hooks; two nodes (or a small **Code** node that calls both via `$helpers.httpRequest`) is the intended pattern.
+
+**`client_salt` in n8n**
+
+The server attributes the row to your vault session using **`client_salt`** (the segment after `ranbval.` in a token `ranbval.<salt>.<ciphertext>.<label>`). If you still have that full token string in a credential or expression, extract salt with a **Code** node, for example:
+
+```javascript
+const key = $json.apiKey; // or pull from credentials / previous node
+if (typeof key !== "string" || !key.startsWith("ranbval.")) {
+  return [{ json: { client_salt: null } }];
+}
+return [{ json: { client_salt: key.split(".")[1] } }];
+```
+
+If n8n only stores a **plain** API key (no `ranbval.*` string), copy the **salt** from the Ranbval session / dashboard and keep it in a **static workflow value** or credential field used only for telemetry (not the secret itself).
+
+**Example JSON body** (HTTP Request → Body Content Type **JSON**; adjust with n8n expressions):
+
+```json
+{
+  "client_salt": "{{ $json.client_salt }}",
+  "machine_name": "n8n",
+  "repo_path": "{{ $workflow.name }}",
+  "git_url": "https://github.com/your-org/your-repo.git",
+  "model_used": "openai.chat",
+  "prompt_tokens": 0,
+  "completion_tokens": 0,
+  "security": {
+    "event_kind": "custom.request",
+    "transport": "https",
+    "vault_token_format": "ranbval",
+    "client_platform": "n8n",
+    "ci_environment": false
+  }
+}
+```
+
+Fill **`git_url`** with the repo URL your Ranbval project allowlist expects (if you use allowlists). Token counts can be filled from the previous node’s response if the API returns them.
+
+Full field list: **[ranbval-password-manager README — Telemetry ingest](../ranbval-password-manager/README.md#ingest--post-apitelemetry)**.
 
 ---
 

@@ -7,7 +7,7 @@ import os
 import sys
 
 # Password-manager origin only — no ``/api`` suffix (SDK appends ``/api/...`` paths).
-DEFAULT_RANBVAL_HOST = "https://ranbval-password-manager.onrender.com"
+DEFAULT_RANBVAL_HOST = "https://api.ranbval.com"
 
 
 def warn_telemetry_send_failed(host: str, exc: BaseException) -> None:
