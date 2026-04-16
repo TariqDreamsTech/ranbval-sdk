@@ -2,7 +2,9 @@
 Ranbval SDK — keep API secrets out of plaintext config.
 
 - ``load_ranbval()``    load layered .ranbval* files into os.environ
-- ``safe_decrypt()``   decrypt a vault token (checks repo allowlist + active plan)
+- ``safe_decrypt()``   decrypt a vault token locally (checks billing + repo allowlist)
+- ``decrypt_key()``    decrypt by env var name — auto-discovers project secret from prefix
+- ``proxy_request()``  route any HTTP request through Ranbval secure proxy (secret never local)
 - ``emit_telemetry()`` log a request to the Ranbval Live Monitor
 - ``assert_plan_active()`` verify vault owner has an active subscription/trial
 - ``fetch_billing_status()`` inspect plan, limits, trial state by client salt
@@ -10,6 +12,7 @@ Ranbval SDK — keep API secrets out of plaintext config.
 """
 
 from ranbval_sdk.crypto import safe_decrypt, decrypt_key
+from ranbval_sdk.proxy import proxy_request, ProxyError
 
 from ranbval_sdk.dot_ranbval import (
     find_ranbval_directory,
@@ -53,4 +56,7 @@ __all__ = [
     # HTTP integrations
     "build_secure_client",
     "secure_client",
+    # Secure proxy
+    "proxy_request",
+    "ProxyError",
 ]
