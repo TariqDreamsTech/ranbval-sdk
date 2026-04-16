@@ -25,15 +25,23 @@ def build_secure_client(SDKClass: Type[Any], env_var_name: str, key_kwarg: str, 
     class SecurePlatformProxy(SDKClass):
         def __init__(self, *args, **kwargs):
             encoded_key = os.environ.get(env_var_name, "")
-            secret = os.environ.get("RANBVAL_VAULT_SECRET", "ranbval")
+            # Accept RANBVAL_PROJECT_SECRET (new) or RANBVAL_VAULT_SECRET (legacy alias)
+            secret = (
+                os.environ.get("RANBVAL_PROJECT_SECRET")
+                or os.environ.get("RANBVAL_VAULT_SECRET")
+                or ""
+            ).strip()
             host = os.environ.get("RANBVAL_HOST", DEFAULT_RANBVAL_HOST)
-            
+
             if not encoded_key:
                 raise ValueError(f"No {env_var_name} found or provided.")
-                
+
             if encoded_key.startswith("ranbval."):
                 if not secret:
-                    raise ValueError(f"Found encoded Vault key for {env_var_name} but RANBVAL_VAULT_SECRET is missing!")
+                    raise ValueError(
+                        f"Found encoded vault token for {env_var_name} but RANBVAL_PROJECT_SECRET is missing. "
+                        "Set it in .ranbval or your environment."
+                    )
                 
                 # Zero-Memory Decryption
                 decrypted_key = safe_decrypt(encoded_key, secret)

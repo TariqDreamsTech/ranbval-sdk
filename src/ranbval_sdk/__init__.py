@@ -9,11 +9,12 @@ Ranbval SDK — keep API secrets out of plaintext config.
 - ``plan_limits()``    get request/secret limits for the active plan
 """
 
-from ranbval_sdk.crypto import safe_decrypt
+from ranbval_sdk.crypto import safe_decrypt, decrypt_key
 
 from ranbval_sdk.dot_ranbval import (
     find_ranbval_directory,
     find_ranbval_file,
+    get_project_key,
     load_ranbval,
     resolve_ranbval_mode,
 )
@@ -36,7 +37,9 @@ __all__ = [
     # Core
     "emit_telemetry",
     "safe_decrypt",
+    "decrypt_key",
     "load_ranbval",
+    "get_project_key",
     "find_ranbval_file",
     "find_ranbval_directory",
     "resolve_ranbval_mode",

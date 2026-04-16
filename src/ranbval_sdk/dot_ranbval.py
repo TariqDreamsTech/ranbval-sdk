@@ -110,12 +110,20 @@ def find_ranbval_file(start: Path | str | None = None) -> str | None:
     return str(layers[0]) if layers else None
 
 
+def _normalize_project_name(name: str) -> str:
+    """Convert project name to uppercase env prefix: 'my-app' → 'MY_APP'."""
+    import re
+    return re.sub(r"[^A-Z0-9]", "_", name.upper().strip()).strip("_")
+
+
 def load_ranbval(
     path: str | None = None,
     *,
     mode: str | None = None,
     start: str | Path | None = None,
     override: bool = False,
+    project_secret: str | None = None,
+    project_name: str | None = None,
 ) -> bool:
     """
     Load ``KEY=value`` pairs into ``os.environ``.
@@ -131,6 +139,26 @@ def load_ranbval(
 
     - ``override=False`` (default): skip if the key is already set and non-empty in ``os.environ``.
     - ``override=True``: file-merged values always win over existing ``os.environ``.
+
+    **Project context** (optional but recommended when using multiple projects):
+
+    - ``project_secret``: the ``ranbval-proj-…`` key for this project. Stored as
+      ``RANBVAL_PROJECT_SECRET`` so ``safe_decrypt`` and ``secure_client`` pick it up
+      automatically without an extra env var.
+    - ``project_name``: short name for this project (e.g. ``"myapp"``). Stored as
+      ``RANBVAL_PROJECT_NAME`` and normalised to an uppercase env prefix
+      (``"my-app"`` → ``"MY_APP_"``). Convention: name your vault tokens in ``.ranbval``
+      with this prefix so origin is always clear::
+
+          # .ranbval
+          MYAPP_OPENAI_KEY=ranbval.xxxx.…ahsan
+          MYAPP_STRIPE_KEY=ranbval.yyyy.…ahsan
+
+          # app.py
+          load_ranbval(project_secret="ranbval-proj-…", project_name="myapp")
+
+      If a token's env-var prefix does not match the loaded project name, ``get_project_key``
+      will raise ``ValueError`` so cross-project key mix-ups are caught at load time.
 
     Returns True if at least one file was read.
     """
@@ -155,4 +183,48 @@ def load_ranbval(
         if override or key not in os.environ or os.environ.get(key, "") == "":
             os.environ[key] = value
 
+    # Inject project context into env so downstream helpers don't need extra args.
+    if project_secret is not None:
+        ps = project_secret.strip()
+        if override or not os.environ.get("RANBVAL_PROJECT_SECRET"):
+            os.environ["RANBVAL_PROJECT_SECRET"] = ps
+
+    if project_name is not None:
+        prefix = _normalize_project_name(project_name)
+        if override or not os.environ.get("RANBVAL_PROJECT_NAME"):
+            os.environ["RANBVAL_PROJECT_NAME"] = project_name
+        if override or not os.environ.get("RANBVAL_PROJECT_PREFIX"):
+            os.environ["RANBVAL_PROJECT_PREFIX"] = prefix
+
     return True
+
+
+def get_project_key(env_var: str) -> str:
+    """
+    Return the value of ``env_var`` after verifying it belongs to the loaded project.
+
+    If ``RANBVAL_PROJECT_PREFIX`` is set (via ``load_ranbval(project_name=…)``), the
+    env var **must** start with that prefix — otherwise ``ValueError`` is raised so
+    cross-project mix-ups are caught immediately.
+
+    Example::
+
+        load_ranbval(project_secret="ranbval-proj-…", project_name="myapp")
+        token = get_project_key("MYAPP_OPENAI_KEY")   # OK
+        token = get_project_key("OTHERAPP_STRIPE_KEY") # ValueError: wrong project prefix
+    """
+    prefix = os.environ.get("RANBVAL_PROJECT_PREFIX", "")
+    if prefix and not env_var.upper().startswith(prefix + "_"):
+        project_name = os.environ.get("RANBVAL_PROJECT_NAME", prefix)
+        raise ValueError(
+            f"Key {env_var!r} does not belong to project {project_name!r} "
+            f"(expected prefix {prefix + '_'!r}). "
+            "Pass the correct project_name to load_ranbval() or use the right .ranbval file."
+        )
+    value = os.environ.get(env_var, "")
+    if not value:
+        raise ValueError(
+            f"Environment variable {env_var!r} is not set. "
+            "Check your .ranbval file or load_ranbval() call."
+        )
+    return value
