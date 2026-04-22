@@ -2,14 +2,10 @@
 Ranbval SDK — keep API secrets out of plaintext config.
 
 - ``load_ranbval()``    load layered .ranbval* files into os.environ
-- ``safe_decrypt()``   decrypt a vault token locally (repo allowlist, optional billing)
+- ``safe_decrypt()``   decrypt a vault token locally (with repo allowlist)
 - ``decrypt_key()``    decrypt by env var name — auto-discovers project secret from prefix
 - ``proxy_request()``  route any HTTP request through Ranbval secure proxy (secret never local)
 - ``emit_telemetry()`` log a request to the Ranbval Live Monitor
-- ``assert_plan_active()`` verify vault owner has an active subscription/trial
-                       (no-op by default; opt in with RANBVAL_ENFORCE_BILLING=1)
-- ``fetch_billing_status()`` inspect plan, limits, trial state by client salt
-- ``plan_limits()``    get request/secret limits for the active plan
 """
 
 from ranbval_sdk.crypto import safe_decrypt, decrypt_key
@@ -24,13 +20,6 @@ from ranbval_sdk.dot_ranbval import (
 )
 
 from ranbval_sdk.telemetry import emit_telemetry
-
-from ranbval_sdk.billing import (
-    BillingError,
-    assert_plan_active,
-    fetch_billing_status,
-    plan_limits,
-)
 
 from ranbval_sdk.secret_string import SecretString
 
@@ -47,11 +36,6 @@ __all__ = [
     "find_ranbval_file",
     "find_ranbval_directory",
     "resolve_ranbval_mode",
-    # Billing / plan checks
-    "BillingError",
-    "assert_plan_active",
-    "fetch_billing_status",
-    "plan_limits",
     # Secret wrapper
     "SecretString",
     # HTTP integrations

@@ -8,7 +8,6 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST
 from ranbval_sdk.repo_policy import assert_repo_allowed_for_decrypt
-from ranbval_sdk.billing import assert_plan_active
 from ranbval_sdk.secret_string import SecretString
 
 
@@ -29,11 +28,6 @@ def _enforce_repo_allowlist_if_configured(client_salt: str) -> None:
     """Load policy from RANBVAL_HOST; when allowlist is non-empty, require matching git origin."""
     host = (os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).strip()
     assert_repo_allowed_for_decrypt(host, client_salt)
-
-
-def _enforce_billing(client_salt: str) -> None:
-    """Verify the vault owner has an active plan / trial before decrypting."""
-    assert_plan_active(client_salt)
 
 
 def safe_decrypt(copy_token: str, project_secret: str) -> SecretString:
@@ -59,7 +53,6 @@ def safe_decrypt(copy_token: str, project_secret: str) -> SecretString:
             if header != "ranbval":
                 raise ValueError("Corrupted cryptographic token identifier or signature matrix")
             _enforce_repo_allowlist_if_configured(noise)
-            _enforce_billing(noise)
             key = derive_key(project_secret, salt)
             b64_payload = blob
         else:
@@ -74,7 +67,6 @@ def safe_decrypt(copy_token: str, project_secret: str) -> SecretString:
             raise ValueError("Corrupted cryptographic token identifier or signature matrix")
 
         _enforce_repo_allowlist_if_configured(noise_salt)
-        _enforce_billing(noise_salt)
         key = derive_key(project_secret, noise_salt)
 
     # 2. Decode payload (IV + Ciphertext)
