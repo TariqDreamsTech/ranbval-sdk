@@ -44,7 +44,7 @@ def fetch_billing_status(
     Keys returned:
         plan_key              str | None   — "starter" / "growth" / "pro" / "enterprise"
         plan_name             str | None   — human-readable plan name
-        subscription_status   str | None   — Stripe status string
+        subscription_status   str | None   — billing-provider status (e.g. "active", "alive")
         has_active_subscription bool
         trial_active          bool
         trial_expired         bool
@@ -52,6 +52,11 @@ def fetch_billing_status(
         vault_locked          bool         — True → no access at all
         request_limit_month   int | None
         secrets_limit         int | None
+
+    When the Ranbval backend has billing disabled (env
+    ``RANBVAL_BILLING_DISABLED=true``), the response always reports
+    ``vault_locked=false`` and ``has_active_subscription=true`` so this call
+    becomes a no-op gate.
 
     Raises:
         BillingError   — session not found (404) or server error
@@ -99,8 +104,20 @@ def assert_plan_active(
 
     Returns the billing dict on success so callers can inspect plan limits.
 
-    Set ``RANBVAL_SKIP_BILLING_CHECK=1`` to bypass (local dev / CI only).
+    **Default is no-op (no network call).** While the Ranbval backend is
+    running with ``RANBVAL_BILLING_DISABLED=true`` (current default), there is
+    nothing to enforce, so this function returns an empty dict immediately.
+    To re-enable strict enforcement on the SDK side, set
+    ``RANBVAL_ENFORCE_BILLING=1`` in the consuming app's environment.
+
+    ``RANBVAL_SKIP_BILLING_CHECK=1`` also forces a bypass (legacy escape hatch).
     """
+    enforce = (os.environ.get("RANBVAL_ENFORCE_BILLING") or "").strip().lower()
+    if enforce not in ("1", "true", "yes", "on"):
+        # Billing is server-side disabled by default — no need to spend a
+        # round-trip per decrypt to be told the vault is unlocked.
+        return {}
+
     skip = (os.environ.get(skip_env) or "").strip().lower()
     if skip in ("1", "true", "yes", "on"):
         return {}
@@ -143,8 +160,12 @@ def plan_limits(
 
     Returns a dict with keys:
         plan_key, plan_name, request_limit_month, secrets_limit
-    Returns empty dict if billing check is skipped or call fails silently.
+    Returns empty dict if billing enforcement is off (default), the check is
+    skipped, or the call fails silently.
     """
+    enforce = (os.environ.get("RANBVAL_ENFORCE_BILLING") or "").strip().lower()
+    if enforce not in ("1", "true", "yes", "on"):
+        return {}
     skip = (os.environ.get("RANBVAL_SKIP_BILLING_CHECK") or "").strip().lower()
     if skip in ("1", "true", "yes", "on"):
         return {}
