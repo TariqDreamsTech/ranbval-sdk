@@ -13,19 +13,7 @@ import urllib.request
 
 from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST, warn_telemetry_send_failed
 from ranbval_sdk import http_tls
-
-
-def _get_git_remote() -> str | None:
-    try:
-        import subprocess
-
-        return subprocess.check_output(
-            ["git", "config", "--get", "remote.origin.url"],
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).strip()
-    except Exception:
-        return None
+from ranbval_sdk.repo_policy import get_git_remote_origin as _get_git_remote
 
 
 def _get_git_branch() -> str | None:
@@ -137,8 +125,7 @@ def emit_telemetry(
         )
         try:
             with http_tls.urlopen(req, timeout=5) as resp:
-                if resp.status == 200:
-                    print(f"\n[Ranbval] Telemetry synced: {model_used}")
+                resp.read()
         except Exception as e:
             warn_telemetry_send_failed(h, e)
 

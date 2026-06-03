@@ -1,82 +1,85 @@
-# 🔐 Ranbval SDK `v0.5.1`
+[![PyPI](https://img.shields.io/pypi/v/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
+[![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **Your secrets, your rules.**
-> Stop committing plaintext API keys. Stop paying for other people's usage. Take back control.
+# Ranbval SDK `v0.9.0`
+
+Keep API secrets out of plaintext config. Encrypt them in the Ranbval dashboard, store encrypted tokens in `.ranbval` files, decrypt only at runtime — AES-256-GCM with PBKDF2 key derivation, no plaintext ever touches source control.
 
 ```bash
 pip install ranbval-sdk
 ```
 
-[![PyPI](https://img.shields.io/pypi/v/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
-[![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
 ---
 
-## 🧠 Why Ranbval Exists
+## Why Ranbval Exists
 
-With so many LLM APIs and services in the market today, **managing secrets has become a nightmare.**
-
-Someone shares an API key → they share it with someone else → suddenly **the CEO is paying a massive unexpected bill** — and nobody knows which repo, which device, or which person burned the tokens.
-
-**That is exactly why we built Ranbval.**
+With so many LLM APIs and third-party services in use today, managing secrets has become a real operational problem. Someone shares an API key, it gets copied, forwarded, and committed — and suddenly the bill arrives with no way to trace which repo or person burned the tokens.
 
 | Problem | Ranbval Solution |
 |---------|-----------------|
 | API keys committed to Git | Encrypted `.ranbval*` files — plaintext never touches source control |
-| Keys copied and shared freely | **Repo allowlist** — if a repo is not authorized, the key cannot decrypt |
-| No idea who used what, when | **Live Monitor** — every usage logged with machine, repo, model, tokens |
-| Surprise bills from leaked keys | **Plan enforcement** — SDK checks subscription before every decrypt |
+| Keys copied and shared freely | Repo allowlist — if a repo is not authorized, the key cannot decrypt |
+| No idea who used what, when | Live Monitor — every usage logged with machine, repo, model, tokens |
 | `load_dotenv()` scattered everywhere | One call: `load_ranbval()` — layered, mode-aware, zero side effects on import |
-
-**No more paying for other people's usage. Your secrets, your rules.**
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ```python
-from ranbval_sdk import load_ranbval, safe_decrypt, emit_telemetry
-import os
+from ranbval_sdk import load_ranbval, decrypt_key
+import os, openai
 
-# 1. Load encrypted config from .ranbval files
+# 1. Load encrypted config from .ranbval files (no network, no decryption)
 load_ranbval()
 
-# 2. Decrypt a vault token into a protected SecretString
-secret = safe_decrypt(os.environ["MY_API_KEY"], os.environ["RANBVAL_VAULT_SECRET"])
+# 2. Decrypt a vault token — returns a SecretString, never printable
+api_key = decrypt_key("OPENAI_API_KEY")
 
-# 3. Use it — value is NEVER visible in logs or prints
-import openai
-client = openai.OpenAI(api_key=secret.use())   # ← only access point
+# 3. Pass directly to the SDK — value is never exposed in logs or prints
+client = openai.OpenAI(api_key=api_key.use())
 
-# 4. Log usage to Live Monitor
-emit_telemetry(vault_token_env="MY_API_KEY", model_used="gpt-4o", background=True)
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+```
+
+`.ranbval.local` (never commit this file):
+```bash
+RANBVAL_PROJECT_SECRET=your_dashboard_project_secret
+OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
 ```
 
 ---
 
-## 📦 What's Inside
+## Module Reference
 
-| Module | What it does |
+| Symbol | Description |
 |--------|-------------|
 | `load_ranbval()` | Merges layered `.ranbval*` files into `os.environ` |
-| `safe_decrypt()` | Decrypts vault token → returns `SecretString` (never printable) |
+| `safe_decrypt()` | Decrypts a vault token string → `SecretString` |
+| `decrypt_key()` | Reads an env var and decrypts it in one call |
 | `SecretString` | Wrapper that blocks all display paths — value only via `.use()` |
-| `assert_plan_active()` | Raises `BillingError` if subscription/trial is not valid |
-| `fetch_billing_status()` | Inspect plan, limits, trial state for a vault session |
-| `plan_limits()` | Get request/secret limits for the active plan |
-| `emit_telemetry()` | POST usage log to Ranbval Live Monitor |
 | `secure_client()` | Wrap a third-party SDK class for auto-decrypt + telemetry |
+| `build_secure_client()` | Same as `secure_client()` but returns a subclass instead of an instance |
+| `proxy_request()` | Route an HTTP request through the Ranbval proxy |
+| `emit_telemetry()` | POST a usage event to the Ranbval Live Monitor |
+| `get_audit_log()` | Return the in-process audit log list |
+| `clear_audit_log()` | Clear the in-process audit log |
+| `get_project_key()` | Read `RANBVAL_PROJECT_SECRET` from env |
+| `find_ranbval_file()` | Locate the nearest `.ranbval*` file on disk |
+| `find_ranbval_directory()` | Locate the config root directory |
+| `resolve_ranbval_mode()` | Determine the active mode from env/args |
 
 ---
 
-## 🗂️ Function Reference
-
----
+## Function Reference
 
 ### `load_ranbval()`
 
-Loads configuration from `.ranbval*` files into `os.environ`. **No network calls. No decryption. Zero side effects on import.**
+Loads configuration from `.ranbval*` files into `os.environ`. No network calls, no decryption, zero side effects on import.
 
 ```python
 from ranbval_sdk import load_ranbval
@@ -90,7 +93,7 @@ load_ranbval(override=True)                 # file values overwrite existing os.
 
 **How it finds files**
 
-Walks from `cwd` upward until it finds a directory containing `.ranbval` or any `.ranbval.*` file. That becomes the **config root**.
+Walks from `cwd` upward until it finds a directory containing `.ranbval` or any `.ranbval.*` file. That becomes the config root.
 
 **Merge order** (later file wins for duplicate keys):
 
@@ -113,11 +116,11 @@ Walks from `cwd` upward until it finds a directory containing `.ranbval` or any 
 **Example `.ranbval` file:**
 
 ```bash
-# Plain values
+# Plain values — safe to commit
 APP_NAME=my-app
 DATABASE_URL=postgresql://localhost/mydb
 
-# Encrypted vault token (generated in the Ranbval dashboard)
+# Encrypted vault token — generated in the Ranbval dashboard
 OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
 ```
 
@@ -125,11 +128,7 @@ OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
 
 ### `safe_decrypt()`
 
-Decrypts a `ranbval.*` vault token using AES-256-GCM with PBKDF2 key derivation.
-
-Before decrypting it **automatically**:
-1. ✅ Checks **repo allowlist** — is this Git repo allowed to use this key?
-2. ✅ Checks **billing/plan** — does the vault owner have an active subscription?
+Decrypts a `ranbval.*` vault token string using AES-256-GCM with PBKDF2 key derivation.
 
 ```python
 from ranbval_sdk import load_ranbval, safe_decrypt
@@ -138,12 +137,14 @@ import os
 load_ranbval()
 
 secret = safe_decrypt(
-    os.environ["OPENAI_API_KEY"],       # the ranbval.* token
-    os.environ["RANBVAL_VAULT_SECRET"], # your vault password
+    os.environ["OPENAI_API_KEY"],          # the ranbval.* token string
+    os.environ["RANBVAL_PROJECT_SECRET"],  # your project secret
 )
+
+client = openai.OpenAI(api_key=secret.use())
 ```
 
-**Returns:** a [`SecretString`](#secretstring) — the decrypted value is **never** accessible via print, str, repr, f-strings, or logs.
+**Returns:** a [`SecretString`](#secretstring) — the decrypted value is never accessible via print, str, repr, f-strings, or logs.
 
 ```python
 print(secret)        # → [ranbval:secret]
@@ -152,33 +153,51 @@ f"key={secret}"      # → key=[ranbval:secret]
 repr(secret)         # → SecretString(***)
 len(secret)          # → 164  (safe — reveals only length)
 
-# ✅ Only correct usage:
+# Only correct usage:
 client = openai.OpenAI(api_key=secret.use())
 headers = {"Authorization": f"Bearer {secret.use()}"}
 ```
 
 **Raises:**
-- `BillingError` — no active subscription or trial expired
 - `PermissionError` — this Git repo is not in the allowed list
-- `ValueError` — wrong vault secret or corrupted token
+- `ValueError` — wrong project secret or corrupted token
 
-**Bypass flags (dev/CI only):**
+**Bypass flag (dev/CI only):**
 
 ```bash
-RANBVAL_SKIP_REPO_CHECK=1       # skip git remote allowlist check
-RANBVAL_SKIP_BILLING_CHECK=1    # skip subscription/plan check
+RANBVAL_SKIP_REPO_CHECK=1   # skip git remote allowlist check
 ```
+
+---
+
+### `decrypt_key()`
+
+Convenience wrapper: reads an env var and decrypts it in one call. The project secret is read from `RANBVAL_PROJECT_SECRET` automatically.
+
+```python
+from ranbval_sdk import load_ranbval, decrypt_key
+
+load_ranbval()
+
+# Reads os.environ["OPENAI_API_KEY"] and os.environ["RANBVAL_PROJECT_SECRET"]
+api_key = decrypt_key("OPENAI_API_KEY")
+
+client = openai.OpenAI(api_key=api_key.use())
+```
+
+This is the recommended pattern for most applications — it reduces boilerplate and keeps the project secret out of your application code.
 
 ---
 
 ### `SecretString`
 
-A string wrapper that **makes it impossible to accidentally expose a secret** through print, logging, f-strings, or repr.
+A string wrapper that makes it impossible to accidentally expose a secret through print, logging, f-strings, or repr.
 
 ```python
 from ranbval_sdk import SecretString
 
-# Created automatically by safe_decrypt() — but you can also wrap your own values:
+# Created automatically by safe_decrypt() / decrypt_key()
+# — but you can also wrap your own values:
 secret = SecretString("sk-proj-super-secret-key", label="openai")
 
 print(secret)           # [ranbval:secret]
@@ -187,186 +206,34 @@ f"key={secret}"         # key=[ranbval:secret]
 str(secret)             # [ranbval:secret]
 len(secret)             # 26  ← safe
 
-# ✅ Only way to get the real value:
+# Only way to get the real value:
 real_value = secret.use()
 ```
 
 **Why this matters:**
 
 ```python
-# ❌ Old way — key leaks in logs/stdout
-api_key = os.environ["OPENAI_KEY"]       # plain string
-print(f"Using key: {api_key}")           # 💀 key printed to console/logs
+# Old way — key leaks in logs/stdout
+api_key = os.environ["OPENAI_KEY"]
+print(f"Using key: {api_key}")           # key printed to console/logs
 
-# ✅ Ranbval way — impossible to leak accidentally
-secret = safe_decrypt(token, vault_secret)
+# Ranbval way — impossible to leak accidentally
+secret = decrypt_key("OPENAI_KEY")
 print(f"Using key: {secret}")            # → Using key: [ranbval:secret]
 ```
 
-**Properties:**
-| Method/Property | Description |
-|----------------|-------------|
-| `.use()` | Returns the raw string — only access point |
-| `len(secret)` | Length of the secret (safe) |
+| Method / Property | Description |
+|-------------------|-------------|
+| `.use()` | Returns the raw string — the only access point |
+| `len(secret)` | Length of the secret (safe to log) |
 | `.label` | Optional name set at creation |
-| `==` | Compares two SecretStrings by value (secure) |
-
----
-
-### `assert_plan_active()`
-
-Checks whether the vault owner has an active subscription or valid trial. Raises `BillingError` if not.
-
-Called **automatically** inside `safe_decrypt()` — but you can also call it manually at app startup to fail fast.
-
-```python
-from ranbval_sdk import assert_plan_active, BillingError
-
-salt = "4ii0a022aa"  # from ranbval.<salt>.<blob>.<label>
-
-try:
-    info = assert_plan_active(salt)
-    print(f"Plan: {info['plan_key']} ({info['plan_name']})")
-except BillingError as e:
-    print(f"Access denied: {e}")
-    # → Ranbval: your free trial has ended.
-    #   Subscribe at https://www.ranbval.com to continue.
-```
-
-**What triggers a `BillingError`:**
-- `vault_locked = True` (trial expired, no active subscription)
-- No active subscription AND trial not running
-- Trial expired
-
-**Bypass for local dev:**
-```bash
-RANBVAL_SKIP_BILLING_CHECK=1
-```
-
----
-
-### `fetch_billing_status()`
-
-Fetch full billing and plan information for a vault session — no auth token required, only the `client_salt`.
-
-```python
-from ranbval_sdk import fetch_billing_status
-
-info = fetch_billing_status("4ii0a022aa")
-
-print(info["plan_key"])              # "growth"
-print(info["plan_name"])             # "Growth"
-print(info["subscription_status"])  # "active"
-print(info["has_active_subscription"])  # True
-print(info["trial_active"])         # False
-print(info["trial_expired"])        # False
-print(info["vault_locked"])         # False
-print(info["request_limit_month"])  # 100000
-print(info["secrets_limit"])        # 50
-```
-
-**Response fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `plan_key` | `str\|None` | `starter` / `growth` / `pro` / `enterprise` |
-| `plan_name` | `str\|None` | Human-readable plan name |
-| `subscription_status` | `str\|None` | Stripe status: `active`, `trialing`, `past_due`, `canceled` |
-| `has_active_subscription` | `bool` | True if subscription is active |
-| `trial_active` | `bool` | True if free trial is currently running |
-| `trial_expired` | `bool` | True if trial ended with no subscription |
-| `trial_ends_at` | `str\|None` | ISO datetime when trial ends |
-| `vault_locked` | `bool` | True = no access at all |
-| `request_limit_month` | `int\|None` | Max API requests per month for this plan |
-| `secrets_limit` | `int\|None` | Max secrets allowed for this plan |
-
-**Raises:**
-- `BillingError` — session not found (wrong salt or no matching project)
-- `OSError` — network / TLS failure reaching the API
-
----
-
-### `plan_limits()`
-
-Lightweight shortcut — returns just the plan limits. **Never raises** (returns `{}` on any error).
-
-```python
-from ranbval_sdk import plan_limits
-
-limits = plan_limits("4ii0a022aa")
-# {
-#   "plan_key": "growth",
-#   "plan_name": "Growth",
-#   "request_limit_month": 100000,
-#   "secrets_limit": 50
-# }
-```
-
-Use this when you want to **enforce limits in your own code** without crashing on billing errors:
-
-```python
-limits = plan_limits(salt)
-if limits.get("request_limit_month") and usage > limits["request_limit_month"]:
-    raise Exception("Monthly request limit reached — upgrade your Ranbval plan.")
-```
-
----
-
-### `emit_telemetry()`
-
-Posts a usage event to the Ranbval Live Monitor. Call it **after** your API request so the dashboard tracks every usage against the correct vault credential.
-
-```python
-from ranbval_sdk import emit_telemetry
-
-emit_telemetry(
-    vault_token_env="OPENAI_API_KEY",   # env var holding a ranbval.* token
-    model_used="gpt-4o",                # label shown in the dashboard
-    prompt_tokens=512,
-    completion_tokens=128,
-    event_kind="llm.chat",
-    background=True,                    # non-blocking (runs in a daemon thread)
-)
-```
-
-**Or pass the salt directly:**
-
-```python
-emit_telemetry(
-    client_salt="4ii0a022aa",
-    model_used="my-service.v1",
-    background=True,
-)
-```
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `vault_token_env` | `str` | Env var name holding a `ranbval.*` token — salt extracted automatically |
-| `client_salt` | `str` | Use instead of `vault_token_env` if you have the salt directly |
-| `model_used` | `str` | Label for the dashboard (e.g. `"gpt-4o"`, `"stripe.charge"`) |
-| `prompt_tokens` | `int` | Input tokens (0 if not an LLM call) |
-| `completion_tokens` | `int` | Output tokens (0 if not an LLM call) |
-| `event_kind` | `str` | Event type (e.g. `"llm.chat"`, `"custom.request"`) |
-| `background` | `bool` | `True` = fire-and-forget (daemon thread). `False` = blocking |
-| `host_url` | `str` | Override `RANBVAL_HOST` for this call |
-
-**Environment variables:**
-
-| Variable | Purpose |
-|----------|---------|
-| `RANBVAL_HOST` | Password-manager base URL (default: `https://api.ranbval.com`) |
-| `RANBVAL_TELEMETRY` | `0` / `false` / `off` — disable all telemetry POSTs |
-| `RANBVAL_TELEMETRY_DEBUG` | `1` / `true` — print telemetry failures to stderr |
-
-> If no `client_salt` can be resolved, this is a **no-op** (silent). Safe to call even with plain (non-ranbval) keys.
+| `==` | Compares two `SecretString` values securely |
 
 ---
 
 ### `secure_client()` / `build_secure_client()`
 
-Wrap a third-party SDK class so it auto-decrypts and auto-logs telemetry on every call.
+Wrap a third-party SDK class so it auto-decrypts the key and fires telemetry on every call.
 
 ```python
 from ranbval_sdk import load_ranbval, secure_client
@@ -377,16 +244,19 @@ load_ranbval()
 # Returns an openai.OpenAI instance with auto-decrypt + telemetry
 client = secure_client(
     openai.OpenAI,
-    env_var="OPENAI_API_KEY",               # env var with the ranbval.* token
-    key_kwarg="api_key",                    # constructor kwarg for the key
-    method_path_to_patch="chat.completions.create",  # method to wrap for telemetry
+    env_var="OPENAI_API_KEY",
+    key_kwarg="api_key",
+    method_path_to_patch="chat.completions.create",
 )
 
 # Use exactly like openai.OpenAI — telemetry fires automatically
-response = client.chat.completions.create(model="gpt-4o", messages=[...])
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello"}],
+)
 ```
 
-**`build_secure_client()`** returns a **subclass** instead of an instance — use when you need to instantiate multiple times:
+`build_secure_client()` returns a subclass instead of an instance — use when you need to instantiate multiple times or pass to a factory:
 
 ```python
 from ranbval_sdk import build_secure_client
@@ -403,94 +273,180 @@ client = SecureAnthropic()
 
 ---
 
-## 🔒 Security Architecture
+### `emit_telemetry()`
 
-```
-Your Code
-    │
-    ├── load_ranbval()         Reads .ranbval* files → os.environ (no network, no decrypt)
-    │
-    ├── safe_decrypt(token, secret)
-    │       │
-    │       ├── 1. Repo allowlist check  →  GET /api/public/repo-policy?client_salt=...
-    │       ├── 2. Billing/plan check   →  GET /api/public/billing-status?client_salt=...
-    │       └── 3. AES-256-GCM decrypt  →  SecretString (value sealed, never printable)
-    │
-    ├── secret.use()           Only access point — pass directly to SDK/headers
-    │
-    └── emit_telemetry()       POST /api/telemetry → Ranbval Live Monitor
+Posts a usage event to the Ranbval Live Monitor. Call it after your API request so the dashboard can track every usage against the correct vault credential.
+
+```python
+from ranbval_sdk import emit_telemetry
+
+emit_telemetry(
+    vault_token_env="OPENAI_API_KEY",   # env var holding a ranbval.* token
+    model_used="gpt-4o",
+    prompt_tokens=512,
+    completion_tokens=128,
+    event_kind="llm.chat",
+    background=True,                    # non-blocking daemon thread
+)
 ```
 
-**Token format:** `ranbval.<client_salt>.<aes-gcm-blob>.<label>`
-- `client_salt` — 10-char noise, used for session lookup and telemetry attribution
-- `aes-gcm-blob` — IV + ciphertext, base64url encoded
-- `label` — human-readable tag (`ahsan`, `openai`, etc.)
+Or pass the salt directly if you have it:
+
+```python
+emit_telemetry(
+    client_salt="4ii0a022aa",
+    model_used="stripe.charge",
+    background=True,
+)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `vault_token_env` | `str` | Env var name holding a `ranbval.*` token — salt extracted automatically |
+| `client_salt` | `str` | Use instead of `vault_token_env` if you already have the salt |
+| `model_used` | `str` | Label shown in the dashboard (e.g. `"gpt-4o"`, `"stripe.charge"`) |
+| `prompt_tokens` | `int` | Input tokens (0 if not an LLM call) |
+| `completion_tokens` | `int` | Output tokens (0 if not an LLM call) |
+| `event_kind` | `str` | Event category (e.g. `"llm.chat"`, `"custom.request"`) |
+| `background` | `bool` | `True` = fire-and-forget in a daemon thread |
+| `host_url` | `str` | Override `RANBVAL_HOST` for this call |
+
+If no `client_salt` can be resolved the call is a silent no-op — safe to call even with plain (non-ranbval) keys.
 
 ---
 
-## 🌍 Environment Variables Reference
+### `proxy_request()`
+
+Route an outbound HTTP request through the Ranbval secure proxy. The real API key is decrypted server-side and never returned to the caller. Raises `ProxyError` on failure.
+
+```python
+from ranbval_sdk import load_ranbval, proxy_request, ProxyError
+import os
+
+load_ranbval()
+
+try:
+    result = proxy_request(
+        token=os.environ["OPENAI_API_KEY"],        # ranbval.* vault token
+        target_url="https://api.openai.com/v1/chat/completions",
+        method="POST",
+        inject_as="bearer",                         # Authorization: Bearer <secret>
+        body={"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]},
+    )
+    print(result["status"])   # HTTP status from the target
+    print(result["body"])     # parsed JSON response
+except ProxyError as e:
+    print(f"Proxy failed: {e}")
+```
+
+**Inject modes:** `"bearer"` · `"basic"` · `"header:X-Api-Key"` · `"query:api_key"`
+
+**Return value:** dict with keys `status` (int), `ok` (bool), `body` (parsed JSON or str), `headers` (dict).
+
+`ProxyError` is raised when the proxy rejects the request (bad credentials, unknown token) or is unreachable.
+
+---
+
+### `get_audit_log()` / `clear_audit_log()`
+
+The SDK records every decrypt and telemetry event in an in-process audit log. Useful for testing and compliance verification.
+
+```python
+from ranbval_sdk import load_ranbval, decrypt_key, get_audit_log, clear_audit_log
+
+load_ranbval()
+decrypt_key("OPENAI_API_KEY")
+
+log = get_audit_log()
+# [{"label": "OPENAI_API_KEY", "timestamp": 1716000000.0, "caller": "app.py:12"}]
+
+clear_audit_log()
+assert get_audit_log() == []
+```
+
+---
+
+## `.ranbval` File Format
+
+`.ranbval` files follow the same `KEY=VALUE` format as `.env` files. Lines starting with `#` are comments. Blank lines are ignored.
+
+```bash
+# Plain value — stored and used as-is
+APP_NAME=my-app
+DATABASE_URL=postgresql://localhost/mydb
+
+# Encrypted vault token — generated in the Ranbval dashboard
+# Format: ranbval.<client_salt>.<aes-gcm-blob>.<label>
+OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZtBx...3Kq==.ahsan
+STRIPE_SECRET_KEY=ranbval.7cc2b931ff.xYZabc...Pq==.stripe
+```
+
+**Token format:** `ranbval.<client_salt>.<aes-gcm-blob>.<label>`
+
+| Part | Description |
+|------|-------------|
+| `client_salt` | 10-character identifier used for session lookup and telemetry |
+| `aes-gcm-blob` | IV + ciphertext, base64url-encoded |
+| `label` | Human-readable tag shown in the dashboard |
+
+---
+
+## File Layout Example
+
+```
+my-project/
+├── .ranbval                   ← shared defaults (safe to commit if no secrets)
+├── .ranbval.production        ← production overrides (safe to commit)
+├── .ranbval.local             ← machine secrets (gitignore this)
+├── .ranbval.production.local  ← production + local overrides (gitignore this)
+└── src/
+    └── main.py
+```
+
+`.gitignore`:
+```
+.ranbval.local
+.ranbval.*.local
+```
+
+`.ranbval` (committed, no secrets):
+```bash
+APP_NAME=my-app
+RANBVAL_ENV=development
+```
+
+`.ranbval.production` (committed, encrypted tokens only):
+```bash
+OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZtBx...3Kq==.ahsan
+```
+
+`.ranbval.local` (never committed):
+```bash
+RANBVAL_PROJECT_SECRET=your_project_secret_from_dashboard
+```
+
+---
+
+## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RANBVAL_HOST` | `https://api.ranbval.com` | Password-manager base URL (no `/api` suffix) |
+| `RANBVAL_HOST` | `https://api.ranbval.com` | Ranbval API base URL |
 | `RANBVAL_ENV` | `development` | Active mode for layered config |
-| `RANBVAL_VAULT_SECRET` | *(required)* | Vault password for `safe_decrypt()` |
-| `RANBVAL_SKIP_REPO_CHECK` | `0` | `1` = skip Git remote allowlist check |
-| `RANBVAL_SKIP_BILLING_CHECK` | `0` | `1` = skip subscription/plan check |
+| `RANBVAL_PROJECT_SECRET` | *(required)* | Project secret for `safe_decrypt()` / `decrypt_key()` |
+| `RANBVAL_SKIP_REPO_CHECK` | `0` | `1` = skip git remote allowlist check |
 | `RANBVAL_TELEMETRY` | `on` | `0` / `false` = disable telemetry POSTs |
 | `RANBVAL_TELEMETRY_DEBUG` | `0` | `1` = print telemetry errors to stderr |
 
 ---
 
-## 🧪 Test with curl
+## n8n — HTTP Request + Telemetry
 
-**Check session exists:**
-```bash
-curl "https://api.ranbval.com/api/public/repo-policy?client_salt=YOUR_SALT"
-```
+No Python needed. Use two **HTTP Request** nodes in your n8n workflow:
 
-**Check billing/plan:**
-```bash
-curl "https://api.ranbval.com/api/public/billing-status?client_salt=YOUR_SALT"
-```
+**Node 1** — Your API call (OpenAI, Stripe, etc.) via HTTPS.
 
-**Send a telemetry event:**
-```bash
-curl -X POST "https://api.ranbval.com/api/telemetry" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "client_salt": "YOUR_SALT",
-    "machine_name": "curl-test",
-    "repo_path": "/my/project",
-    "model_used": "curl.test",
-    "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "security": { "event_kind": "custom.request", "transport": "https" }
-  }'
-```
-
-**Test decryption (Python):**
-```bash
-RANBVAL_SKIP_REPO_CHECK=1 \
-RANBVAL_SKIP_BILLING_CHECK=1 \
-RANBVAL_VAULT_SECRET="your_vault_secret" \
-python -c "
-import os
-from ranbval_sdk import safe_decrypt
-secret = safe_decrypt(os.environ['RANBVAL_TOKEN'], os.environ['RANBVAL_VAULT_SECRET'])
-print(f'OK — {len(secret)} chars, value hidden: {secret}')
-"
-```
-
----
-
-## 🔁 n8n — HTTP Request + Telemetry
-
-No Python needed. Chain two **HTTP Request** nodes:
-
-**Node 1 — Your API call** (OpenAI, Stripe, etc.) via HTTPS.
-
-**Node 2 — Telemetry log** to Ranbval:
+**Node 2** — Telemetry log to Ranbval:
 
 ```
 POST https://api.ranbval.com/api/telemetry
@@ -511,7 +467,8 @@ Content-Type: application/json
 }
 ```
 
-**Extract `client_salt` from a `ranbval.*` token in a Code node:**
+Extract `client_salt` from a `ranbval.*` token in a Code node:
+
 ```javascript
 const token = $json.apiKey;
 const salt = token.startsWith("ranbval.") ? token.split(".")[1] : null;
@@ -520,47 +477,36 @@ return [{ json: { client_salt: salt } }];
 
 ---
 
-## 📋 Plans
+## Security Architecture
 
-| Plan | Price | Requests/mo | Secrets |
-|------|-------|-------------|---------|
-| **Starter** | $15/mo | 10,000 | 10 |
-| **Growth** ⭐ | $49/mo | 100,000 | 50 |
-| **Pro** | $129/mo | 500,000 | Unlimited |
-| **Enterprise** | $499+/mo | Unlimited | Unlimited |
+```
+Your Code
+    │
+    ├── load_ranbval()          Reads .ranbval* files → os.environ (no network, no decrypt)
+    │
+    ├── decrypt_key("ENV_VAR")
+    │       │
+    │       ├── 1. Repo allowlist check  →  GET /api/public/repo-policy?client_salt=...
+    │       └── 2. AES-256-GCM decrypt   →  SecretString (value sealed, never printable)
+    │
+    ├── secret.use()            Only access point — pass directly to SDK / headers
+    │
+    └── emit_telemetry()        POST /api/telemetry → Ranbval Live Monitor
+```
 
-**Free trial:** 1 day · 1 project · 5 secrets · Full Growth features
-
-→ **[Subscribe at ranbval.com](https://www.ranbval.com)**
+AES-256-GCM encryption with PBKDF2 key derivation. The project secret never leaves your environment — decryption happens entirely on your machine.
 
 ---
 
-## 📁 File Layout Example
+## License
 
-```
-my-project/
-├── .ranbval                  ← shared defaults (commit this)
-├── .ranbval.production       ← production overrides (commit this)
-├── .ranbval.local            ← machine secrets (gitignore this!)
-├── .ranbval.production.local ← prod + local (gitignore this!)
-└── src/
-    └── main.py
-```
-
-`.gitignore`:
-```
-.ranbval.local
-.ranbval.*.local
-```
+MIT — see [LICENSE](LICENSE).
 
 ---
 
-## 🤝 Investors & Partnerships
+## Links
 
-Ranbval is looking for **CEOs and investors** who want to back the next generation of API secret governance.
-
-If you are interested in backing an idea that solves a real pain for every engineering team using LLMs and third-party APIs — reach out through **[ranbval.com](https://www.ranbval.com)**.
-
----
-
-*PyPI: [`ranbval-sdk`](https://pypi.org/project/ranbval-sdk/) · Docs: [api.ranbval.com/docs](https://api.ranbval.com/docs) · Dashboard: [ranbval.com](https://www.ranbval.com)*
+- PyPI: [pypi.org/project/ranbval-sdk](https://pypi.org/project/ranbval-sdk/)
+- Dashboard: [ranbval.com](https://www.ranbval.com)
+- API docs: [api.ranbval.com/docs](https://api.ranbval.com/docs)
+- Repository: [github.com/TariqDreamsTech/ranbval-sdk](https://github.com/TariqDreamsTech/ranbval-sdk)
