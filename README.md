@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v0.9.0`
+# Ranbval SDK `v0.10.0`
 
 Keep API secrets out of plaintext config. Encrypt them in the Ranbval dashboard, store encrypted tokens in `.ranbval` files, decrypt only at runtime — AES-256-GCM with PBKDF2 key derivation, no plaintext ever touches source control.
 
