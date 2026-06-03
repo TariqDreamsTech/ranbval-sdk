@@ -23,6 +23,8 @@ from ranbval_sdk.telemetry import emit_telemetry
 
 from ranbval_sdk.secret_string import SecretString
 
+from ranbval_sdk.audit import get_audit_log, clear_audit_log
+
 from .integrations.factory import secure_client
 from .integrations.universal import build_secure_client
 
@@ -44,4 +46,7 @@ __all__ = [
     # Secure proxy
     "proxy_request",
     "ProxyError",
+    # Audit
+    "get_audit_log",
+    "clear_audit_log",
 ]

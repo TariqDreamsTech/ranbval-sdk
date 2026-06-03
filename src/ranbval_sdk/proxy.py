@@ -40,6 +40,7 @@ from typing import Any
 
 from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST
 from ranbval_sdk.crypto import _find_project_secret_for
+from ranbval_sdk import http_tls
 
 
 class ProxyError(RuntimeError):
@@ -169,7 +170,7 @@ def proxy_request(
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with http_tls.urlopen(req, timeout=60) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
             return json.loads(raw)
     except urllib.error.HTTPError as e:

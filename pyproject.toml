@@ -1,10 +1,24 @@
 [tool.poetry]
 name = "ranbval-sdk"
-version = "0.9.0"
+version = "0.10.0"
 description = "Keep API secrets out of plaintext config: layered .ranbval* env files, decrypt vault tokens only when used, optional usage telemetry—minimal deps, your own HTTP/SDK stack."
 authors = ["Ahsan Tariq", "Hussnain Tariq", "Sundas Tariq"]
 readme = "README.md"
 build = "build.py"
+license = "MIT"
+homepage = "https://www.ranbval.com"
+repository = "https://github.com/TariqDreamsTech/ranbval-sdk"
+documentation = "https://api.ranbval.com/docs"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Security",
+    "Topic :: Security :: Cryptography",
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"

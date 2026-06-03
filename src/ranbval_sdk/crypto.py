@@ -1,5 +1,7 @@
 import base64
+import hmac
 import os
+import time
 from typing import TYPE_CHECKING
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -9,6 +11,23 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST
 from ranbval_sdk.repo_policy import assert_repo_allowed_for_decrypt
 from ranbval_sdk.secret_string import SecretString
+
+# Module-level store: project secrets keyed by prefix (e.g. "MYAPP", "RANBVAL").
+# Populated by _store_project_secret(); os.environ entry is deleted immediately after.
+# Attacker reading os.environ will not find RANBVAL_PROJECT_SECRET here.
+_secret_store: dict[str, SecretString] = {}
+
+
+def _store_project_secret(key: str, value: str) -> None:
+    """Move a project secret from os.environ into the in-memory store and delete from env."""
+    _secret_store[key] = SecretString(value)
+    os.environ.pop(key, None)
+
+
+def _recall_project_secret(key: str) -> str:
+    """Return the stored secret value, or empty string if not found."""
+    s = _secret_store.get(key)
+    return s.use() if s is not None else ""
 
 
 def derive_key(password: str, salt_str: str) -> bytes:
@@ -50,7 +69,7 @@ def safe_decrypt(copy_token: str, project_secret: str) -> SecretString:
         # Compatibility: old 5-part format
         if len(packet_segments) == 5:
             header, noise, salt, blob, tail = packet_segments
-            if header != "ranbval":
+            if not hmac.compare_digest(header, "ranbval"):
                 raise ValueError("Corrupted cryptographic token identifier or signature matrix")
             _enforce_repo_allowlist_if_configured(noise)
             key = derive_key(project_secret, salt)
@@ -63,7 +82,7 @@ def safe_decrypt(copy_token: str, project_secret: str) -> SecretString:
         b64_payload = packet_segments[2]
         tail_sig = packet_segments[3]
 
-        if header != "ranbval" or tail_sig != "ahsan":
+        if not hmac.compare_digest(header, "ranbval") or not hmac.compare_digest(tail_sig, "ahsan"):
             raise ValueError("Corrupted cryptographic token identifier or signature matrix")
 
         _enforce_repo_allowlist_if_configured(noise_salt)
@@ -81,11 +100,39 @@ def safe_decrypt(copy_token: str, project_secret: str) -> SecretString:
         # 3. Decrypt payload
         aesgcm = AESGCM(key)
         decrypted = aesgcm.decrypt(iv, ciphertext, None)
-        return SecretString(decrypted.decode("utf-8"))
+        plaintext = decrypted.decode("utf-8")
+
+        # TTL check — format: "actual_secret\nranbval-expiry:1234567890"
+        # Backward compatible: old tokens without expiry line work unchanged.
+        if "\nranbval-expiry:" in plaintext:
+            body, _, expiry_line = plaintext.rpartition("\nranbval-expiry:")
+            try:
+                expiry_ts = int(expiry_line.strip())
+                if time.time() > expiry_ts:
+                    raise ValueError(
+                        "Vault token has expired. "
+                        "Generate a new one from the Ranbval dashboard."
+                    )
+            except ValueError as ttl_err:
+                if "expired" in str(ttl_err):
+                    raise
+                # Malformed expiry line — treat as no TTL (safe fallback)
+                body = plaintext
+            plaintext = body
+
+        return SecretString(plaintext)
     except (ValueError, KeyError):
         raise
     except Exception as e:
         raise ValueError("Decryption failed! Did you provide the correct E2E vault secret?") from e
+
+
+def _migrate_from_env(key: str) -> str:
+    """If key is in os.environ, move it to the secret store and return its value."""
+    value = os.environ.get(key, "").strip()
+    if value:
+        _store_project_secret(key, value)   # deletes from os.environ immediately
+    return value
 
 
 def _find_project_secret_for(env_var: str) -> str:
@@ -97,18 +144,20 @@ def _find_project_secret_for(env_var: str) -> str:
        e.g. ``MYAPP_OPENAI_KEY`` → looks for ``MYAPP_PROJECT_SECRET``
     2. ``RANBVAL_PROJECT_SECRET``   — global fallback / single-project setups
 
+    On first access: migrates any matching os.environ entry into the in-memory
+    secret store and removes it from os.environ so it is no longer readable there.
+
     Raises ``ValueError`` if nothing is found.
     """
     parts = env_var.upper().split("_")
-    # Try longest prefix first: MYAPP_SERVICE_KEY → MYAPP_SERVICE → MYAPP
     for i in range(len(parts) - 1, 0, -1):
         candidate = "_".join(parts[:i]) + "_PROJECT_SECRET"
-        value = os.environ.get(candidate, "").strip()
+        value = _recall_project_secret(candidate) or _migrate_from_env(candidate)
         if value:
             return value
 
     # Global fallback
-    fallback = os.environ.get("RANBVAL_PROJECT_SECRET", "").strip()
+    fallback = _recall_project_secret("RANBVAL_PROJECT_SECRET") or _migrate_from_env("RANBVAL_PROJECT_SECRET")
     if fallback:
         return fallback
 

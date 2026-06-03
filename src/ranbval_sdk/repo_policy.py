@@ -30,14 +30,19 @@ def normalize_git_remote_url(url: str | None) -> str | None:
         path = u[colon + 1 :].strip().strip("/").lower()
         return f"https://{host}/{path}"
     parsed = urlparse(u)
-    if not parsed.netloc:
+    # Use parsed.hostname (strips userinfo like tokens/passwords) instead of
+    # parsed.netloc which includes "token@host" — CI systems inject tokens into
+    # the remote URL (e.g. https://ghp_TOKEN@github.com/org/repo) which would
+    # otherwise never match the allowlist entry "https://github.com/org/repo".
+    host = (parsed.hostname or "").lower()
+    if not host:
         return ul
+    port = f":{parsed.port}" if parsed.port else ""
     path = (parsed.path or "").strip("/").lower()
     if path.endswith(".git"):
         path = path[:-4]
     scheme = (parsed.scheme or "https").lower()
-    host = parsed.netloc.lower()
-    return f"{scheme}://{host}/{path}"
+    return f"{scheme}://{host}{port}/{path}"
 
 
 def get_git_remote_origin() -> str | None:

@@ -9,6 +9,7 @@ Call ``load_ranbval()`` explicitly after importing the package (no import-time s
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -112,7 +113,6 @@ def find_ranbval_file(start: Path | str | None = None) -> str | None:
 
 def _normalize_project_name(name: str) -> str:
     """Convert project name to uppercase env prefix: 'my-app' → 'MY_APP'."""
-    import re
     return re.sub(r"[^A-Z0-9]", "_", name.upper().strip()).strip("_")
 
 
@@ -195,6 +195,13 @@ def load_ranbval(
             os.environ["RANBVAL_PROJECT_NAME"] = project_name
         if override or not os.environ.get("RANBVAL_PROJECT_PREFIX"):
             os.environ["RANBVAL_PROJECT_PREFIX"] = prefix
+
+    # Move all *_PROJECT_SECRET keys from os.environ into the in-memory secret store.
+    # This removes them from os.environ so they can't be read by os.environ inspection.
+    from ranbval_sdk.crypto import _store_project_secret
+    for key in list(os.environ.keys()):
+        if key.endswith("_PROJECT_SECRET") and os.environ.get(key):
+            _store_project_secret(key, os.environ[key])
 
     return True
 

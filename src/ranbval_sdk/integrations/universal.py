@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 from typing import Type, Any, Optional
 
@@ -36,18 +37,24 @@ def build_secure_client(SDKClass: Type[Any], env_var_name: str, key_kwarg: str, 
             if not encoded_key:
                 raise ValueError(f"No {env_var_name} found or provided.")
 
+            # Deprecation: RANBVAL_VAULT_SECRET is a legacy alias for RANBVAL_PROJECT_SECRET.
+            if not secret and os.environ.get("RANBVAL_VAULT_SECRET"):
+                print(
+                    "[Ranbval] DeprecationWarning: RANBVAL_VAULT_SECRET is deprecated. "
+                    "Rename it to RANBVAL_PROJECT_SECRET.",
+                    file=sys.stderr,
+                )
+                secret = os.environ.get("RANBVAL_VAULT_SECRET", "").strip()
+
             if encoded_key.startswith("ranbval."):
                 if not secret:
                     raise ValueError(
                         f"Found encoded vault token for {env_var_name} but RANBVAL_PROJECT_SECRET is missing. "
                         "Set it in .ranbval or your environment."
                     )
-                
-                # Zero-Memory Decryption
+
                 decrypted_key = safe_decrypt(encoded_key, secret)
-                
-                # Dynamically set the exact keyword argument this specific SDK expects
-                kwargs[key_kwarg] = decrypted_key
+                kwargs[key_kwarg] = decrypted_key.use()
                 super().__init__(*args, **kwargs)
                 
                 self._ranbval_salt = encoded_key.split(".")[1]
@@ -65,21 +72,24 @@ def build_secure_client(SDKClass: Type[Any], env_var_name: str, key_kwarg: str, 
             parts = path.split('.')
             target_obj = self
             for part in parts[:-1]:
-                target_obj = getattr(target_obj, part)
-                
-            orig_method = getattr(target_obj, parts[-1])
-            
+                target_obj = getattr(target_obj, part, None)
+                if target_obj is None:
+                    return
+
+            orig_method = getattr(target_obj, parts[-1], None)
+            if not callable(orig_method):
+                return
+
             def patched_method(*args, **kwargs):
                 res = orig_method(*args, **kwargs)
                 if self._ranbval_salt:
-                    # Fire basic platform telemetry in the background
                     threading.Thread(
                         target=_send_telemetry,
                         args=(self._ranbval_salt, f"{SDKClass.__name__} API", self._ranbval_host),
-                        daemon=True
+                        daemon=True,
                     ).start()
                 return res
-                
+
             setattr(target_obj, parts[-1], patched_method)
 
     return SecurePlatformProxy
