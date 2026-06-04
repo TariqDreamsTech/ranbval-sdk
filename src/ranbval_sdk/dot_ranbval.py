@@ -203,6 +203,11 @@ def load_ranbval(
         if key.endswith("_PROJECT_SECRET") and os.environ.get(key):
             _store_project_secret(key, os.environ[key])
 
+    # Patch builtins.print and sys.stdout.write to raise if a protected secret
+    # value is passed directly — prevents accidental plaintext output.
+    from ranbval_sdk.secret_string import install_output_guards
+    install_output_guards()
+
     return True
 
 
