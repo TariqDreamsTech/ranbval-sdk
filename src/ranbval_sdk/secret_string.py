@@ -24,8 +24,10 @@ Two ways to consume the value:
 
 from __future__ import annotations
 
+import builtins
 import ctypes
 import sys
+import threading
 
 
 def _try_mlock(buf: bytearray) -> bool:
@@ -38,7 +40,7 @@ def _try_mlock(buf: bytearray) -> bool:
         size = ctypes.c_size_t(len(buf))
         if sys.platform.startswith("linux"):
             return ctypes.CDLL("libc.so.6", use_errno=True).mlock(addr, size) == 0
-        if sys.platform == "darwin":
+        elif sys.platform == "darwin":
             return ctypes.CDLL("libc.dylib", use_errno=True).mlock(addr, size) == 0
     except Exception:
         pass
@@ -59,6 +61,114 @@ def _try_munlock(buf: bytearray) -> None:
             ctypes.CDLL("libc.dylib", use_errno=True).munlock(addr, size)
     except Exception:
         pass
+
+
+class _ProtectedStr(str):
+    """
+    str subclass returned by SecretString.use().
+
+    IS a real str so third-party SDKs (openai, anthropic, httpx, etc.) can
+    use it in string operations and f-string header construction without any
+    changes. All *display* paths are blocked so the value cannot be printed,
+    logged, or repr'd accidentally:
+
+        print(secret.use())        →  [ranbval:secret]
+        repr(secret.use())         →  SecretString(***)
+        x = secret.use()
+        print(x)                   →  [ranbval:secret]
+        logging.info(x)            →  [ranbval:secret]
+
+    SDK internal usage still works: f"Bearer {x}" and str concat use the real
+    underlying str value. print(f"{x}") would also expose it — but that requires
+    deliberate bypassing, unlike print(x) which is the accidental leak this guards.
+    """
+
+    __slots__ = ()
+
+    def __new__(cls, value: str) -> "_ProtectedStr":
+        return str.__new__(cls, value)
+
+    def __str__(self) -> str:
+        return "[ranbval:secret]"
+
+    def __repr__(self) -> str:
+        return "SecretString(***)"
+
+    def __format__(self, spec: str) -> str:
+        # Python's str.__format__ calls str(self) internally, hitting __str__ and
+        # returning "[ranbval:secret]" — which breaks SDK f-string header construction.
+        # self[:] slices the underlying str buffer, returning a plain str with the
+        # real value without going through __str__. format() on that plain str works
+        # correctly, so f"Bearer {key}" in SDK code builds the right Authorization header.
+        # print() calls __str__ directly and remains blocked.
+        #
+        # f-string detection: record (frame_id, lineno) in a thread-local so that
+        # _guarded_print can detect print(f"{key.use()}") on the same line.
+        try:
+            f = sys._getframe(1)
+            _format_tls.recent = (id(f), f.f_lineno)
+        except Exception:
+            pass
+        return format(self[:], spec)
+
+
+# ── Output guards ─────────────────────────────────────────────────────────────
+
+_GUARD_INSTALLED = False
+_orig_print = builtins.print
+_orig_stdout_write: object = None
+_format_tls = threading.local()   # tracks the last _ProtectedStr.__format__ call site
+
+_ERR = (
+    "Ranbval: cannot output a protected secret. "
+    "Pass it directly to the SDK — e.g. OpenAI(api_key=key.use())"
+)
+
+
+def _guarded_print(*args: object, **kwargs: object) -> None:
+    # Case 1 — direct: print(key.use())  →  arg IS a _ProtectedStr
+    for arg in args:
+        if isinstance(arg, _ProtectedStr):
+            raise PermissionError(_ERR)
+    # Case 2 — f-string: print(f"{key.use()}")
+    # __format__ ran on the same line in the same frame just before print was called.
+    try:
+        f = sys._getframe(1)
+        recent = getattr(_format_tls, 'recent', None)
+        if recent and recent == (id(f), f.f_lineno):
+            _format_tls.recent = None
+            raise PermissionError(_ERR)
+    except PermissionError:
+        raise
+    except Exception:
+        pass
+    _format_tls.recent = None
+    _orig_print(*args, **kwargs)
+
+
+def _make_guarded_write(original_write):
+    def _guarded_write(s: str) -> int:
+        if isinstance(s, _ProtectedStr):
+            raise PermissionError(_ERR)
+        return original_write(s)
+    return _guarded_write
+
+
+def install_output_guards() -> None:
+    """
+    Patch builtins.print and sys.stdout.write so that passing a _ProtectedStr
+    (the value returned by SecretString.use()) directly to an output function
+    raises PermissionError instead of leaking the plaintext.
+
+    Called automatically by load_ranbval(). Safe to call multiple times.
+    """
+    global _GUARD_INSTALLED, _orig_stdout_write
+    if _GUARD_INSTALLED:
+        return
+    builtins.print = _guarded_print
+    _orig_stdout_write = sys.stdout.write
+    sys.stdout.write = _make_guarded_write(sys.stdout.write)
+    _GUARD_INSTALLED = True
 
 
 class SecretString:
@@ -87,7 +197,7 @@ class SecretString:
 
     # ── Context manager — wipes automatically on block exit ───────────────
 
-    def __enter__(self) -> str:
+    def __enter__(self) -> "_ProtectedStr":
         return self.use()
 
     def __exit__(self, *_: object) -> None:
@@ -101,7 +211,7 @@ class SecretString:
     def __repr__(self) -> str:
         return "SecretString(***)"
 
-    def __format__(self, format_spec: str) -> str:
+    def __format__(self, _format_spec: str) -> str:
         return "[ranbval:secret]"
 
     def __bytes__(self) -> bytes:
@@ -118,19 +228,25 @@ class SecretString:
         return hash(bytes(object.__getattribute__(self, "_buf")))
 
     # Block attribute setting from outside
-    def __setattr__(self, name: str, value: object) -> None:
+    def __setattr__(self, _name: str, _value: object) -> None:
         raise AttributeError("SecretString is immutable")
 
     # ── Only explicit access point ─────────────────────────────────────────
 
-    def use(self) -> str:
+    def use(self) -> "_ProtectedStr":
         """
-        Return the raw secret value for use in API calls, headers, etc.
-        Raises RuntimeError if the secret has already been wiped or tampered with.
-        Every call is recorded in the audit log (label + caller location, no secret value).
+        Return the secret value for use in API calls, headers, etc.
 
-        Example:
-            client = openai.OpenAI(api_key=secret.use())
+        Returns a _ProtectedStr — a str subclass that works identically to a
+        plain str inside any SDK or HTTP client, but cannot be printed, repr'd,
+        or accidentally logged:
+
+            client = openai.OpenAI(api_key=secret.use())  # correct
+            print(secret.use())                           # → [ranbval:secret]
+            x = secret.use(); print(x)                   # → [ranbval:secret]
+
+        Raises RuntimeError if the secret has been wiped or tampered with.
+        Every call is recorded in the audit log (label + caller, no secret value).
         """
         if type(self).use is not SecretString.use:
             raise RuntimeError("SecretString.use() has been tampered with")
@@ -138,7 +254,7 @@ class SecretString:
             raise RuntimeError("SecretString has been wiped and cannot be used again")
         from ranbval_sdk.audit import record_access
         record_access(object.__getattribute__(self, "_label"))
-        return object.__getattribute__(self, "_buf").decode("utf-8")
+        return _ProtectedStr(object.__getattribute__(self, "_buf").decode("utf-8"))
 
     def __del__(self) -> None:
         try:
