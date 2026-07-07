@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ranbval-sdk"
-version = "1.0.0"
+version = "1.0.1"
 description = "Keep API secrets out of plaintext config: layered .ranbval* env files, decrypt vault tokens only when used, optional usage telemetry—minimal deps, your own HTTP/SDK stack."
 authors = ["Ahsan Tariq", "Hussnain Tariq", "Sundas Tariq","Laiba Saleem"]
 readme = "README.md"
