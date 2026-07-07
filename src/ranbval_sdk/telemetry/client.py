@@ -1,23 +1,28 @@
-"""POST /api/telemetry — use with any HTTP stack after ``load_ranbval()``."""
+"""Telemetry client: build and POST a usage event to ``/api/telemetry``.
+
+Works with any HTTP stack after ``load_ranbval()``. The synchronous
+:func:`emit_telemetry` can fire in the background; :func:`aemit_telemetry` offloads it to a
+worker thread for asyncio/FastAPI. Only a non-reversible token salt is sent — never plaintext.
+"""
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import functools
-import inspect
 import json
 import os
 import socket
 import sys
 import threading
-from typing import Any, Callable, Iterator, Optional
-from urllib.parse import urlparse
 import urllib.request
+from typing import Any, Optional
+from urllib.parse import urlparse
 
-from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST, warn_telemetry_send_failed
-from ranbval_sdk import http_tls
-from ranbval_sdk.repo_policy import get_git_remote_origin as _get_git_remote
+from ranbval_sdk._internal import transport as _transport
+from ranbval_sdk._internal.defaults import (
+    DEFAULT_RANBVAL_HOST,
+    warn_telemetry_send_failed,
+)
+from ranbval_sdk.crypto.repo_policy import get_git_remote_origin as _get_git_remote
 
 
 def _get_git_branch() -> str | None:
@@ -86,7 +91,9 @@ def emit_telemetry(
         if not salt:
             return
 
-        h = (host_url or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip("/")
+        h = (host_url or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip(
+            "/"
+        )
         repo_path = os.getcwd()
         machine_name = socket.gethostname()
         git_url = _get_git_remote()
@@ -95,7 +102,14 @@ def emit_telemetry(
         transport = (parsed.scheme or "http").lower()
         ci_environment = any(
             os.environ.get(k)
-            for k in ("CI", "GITHUB_ACTIONS", "GITLAB_CI", "BUILDKITE", "CIRCLECI", "JENKINS_URL")
+            for k in (
+                "CI",
+                "GITHUB_ACTIONS",
+                "GITLAB_CI",
+                "BUILDKITE",
+                "CIRCLECI",
+                "JENKINS_URL",
+            )
         )
 
         sec = {
@@ -128,7 +142,7 @@ def emit_telemetry(
             method="POST",
         )
         try:
-            with http_tls.urlopen(req, timeout=5) as resp:
+            with _transport.urlopen(req, timeout=5) as resp:
                 resp.read()
         except Exception as e:
             warn_telemetry_send_failed(h, e)
@@ -137,96 +151,6 @@ def emit_telemetry(
         threading.Thread(target=_post, daemon=True).start()
     else:
         _post()
-
-
-# ---------------------------------------------------------------------------
-# High-level, ergonomic telemetry
-#
-# Wrap a call site once and let usage be reported automatically — no manual
-# emit_telemetry() after every request.
-# ---------------------------------------------------------------------------
-
-
-def track(
-    *,
-    client_salt: Optional[str] = None,
-    vault_token_env: Optional[str] = None,
-    model_used: str = "custom.request",
-    event_kind: str = "custom.request",
-    host_url: Optional[str] = None,
-    background: bool = True,
-) -> Callable:
-    """Decorator: emit telemetry automatically after the wrapped call returns.
-
-    ::
-
-        @track(vault_token_env="OPENAI_API_KEY", model_used="gpt-4o")
-        def ask(prompt): ...
-
-    Fire-and-forget by default (``background=True``). Works on sync **and** async
-    functions; telemetry is skipped silently if no salt can be resolved.
-    """
-
-    def _emit() -> None:
-        emit_telemetry(
-            client_salt=client_salt,
-            vault_token_env=vault_token_env,
-            model_used=model_used,
-            event_kind=event_kind,
-            host_url=host_url,
-            background=background,
-        )
-
-    def decorator(fn: Callable) -> Callable:
-        if inspect.iscoroutinefunction(fn):
-
-            @functools.wraps(fn)
-            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                result = await fn(*args, **kwargs)
-                _emit()
-                return result
-
-            return async_wrapper
-
-        @functools.wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            result = fn(*args, **kwargs)
-            _emit()
-            return result
-
-        return wrapper
-
-    return decorator
-
-
-@contextlib.contextmanager
-def tracked(
-    *,
-    client_salt: Optional[str] = None,
-    vault_token_env: Optional[str] = None,
-    model_used: str = "custom.request",
-    event_kind: str = "custom.request",
-    host_url: Optional[str] = None,
-    background: bool = True,
-) -> Iterator[None]:
-    """Context manager: emit telemetry once when the block exits.
-
-    ::
-
-        with tracked(vault_token_env="OPENAI_API_KEY"):
-            client.chat.completions.create(...)
-    """
-    try:
-        yield
-    finally:
-        emit_telemetry(
-            client_salt=client_salt,
-            vault_token_env=vault_token_env,
-            model_used=model_used,
-            event_kind=event_kind,
-            host_url=host_url,
-            background=background,
-        )
 
 
 async def aemit_telemetry(**kwargs: Any) -> None:

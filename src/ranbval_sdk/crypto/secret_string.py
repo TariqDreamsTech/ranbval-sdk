@@ -117,7 +117,7 @@ class _ProtectedStr(str):
 _GUARD_INSTALLED = False
 _orig_print = builtins.print
 _orig_stdout_write: object = None
-_format_tls = threading.local()   # tracks the last _ProtectedStr.__format__ call site
+_format_tls = threading.local()  # tracks the last _ProtectedStr.__format__ call site
 
 _ERR = (
     "Ranbval: cannot output a protected secret. "
@@ -134,7 +134,7 @@ def _guarded_print(*args: object, **kwargs: object) -> None:
     # __format__ ran on the same line in the same frame just before print was called.
     try:
         f = sys._getframe(1)
-        recent = getattr(_format_tls, 'recent', None)
+        recent = getattr(_format_tls, "recent", None)
         if recent and recent == (id(f), f.f_lineno):
             _format_tls.recent = None
             raise PermissionError(_ERR)
@@ -151,6 +151,7 @@ def _make_guarded_write(original_write):
         if isinstance(s, _ProtectedStr):
             raise PermissionError(_ERR)
         return original_write(s)
+
     return _guarded_write
 
 
@@ -181,7 +182,7 @@ class SecretString:
 
     def __init__(self, value: str, label: str = "secret") -> None:
         buf = bytearray(value.encode("utf-8"))
-        _try_mlock(buf)   # pin to RAM — no swap to disk
+        _try_mlock(buf)  # pin to RAM — no swap to disk
         object.__setattr__(self, "_buf", buf)
         object.__setattr__(self, "_label", label)
         object.__setattr__(self, "_wiped", False)
@@ -191,7 +192,7 @@ class SecretString:
     def wipe(self) -> None:
         """Zero the secret bytes in memory and unpin from RAM. After this, use() raises RuntimeError."""
         buf = object.__getattribute__(self, "_buf")
-        _try_munlock(buf)         # unpin before zeroing
+        _try_munlock(buf)  # unpin before zeroing
         buf[:] = b"\x00" * len(buf)
         object.__setattr__(self, "_wiped", True)
 
@@ -219,9 +220,13 @@ class SecretString:
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, SecretString):
-            if object.__getattribute__(self, "_wiped") or object.__getattribute__(other, "_wiped"):
+            if object.__getattribute__(self, "_wiped") or object.__getattribute__(
+                other, "_wiped"
+            ):
                 return False
-            return object.__getattribute__(self, "_buf") == object.__getattribute__(other, "_buf")
+            return object.__getattribute__(self, "_buf") == object.__getattribute__(
+                other, "_buf"
+            )
         return NotImplemented
 
     def __hash__(self) -> int:
@@ -252,7 +257,8 @@ class SecretString:
             raise RuntimeError("SecretString.use() has been tampered with")
         if object.__getattribute__(self, "_wiped"):
             raise RuntimeError("SecretString has been wiped and cannot be used again")
-        from ranbval_sdk.audit import record_access
+        from ranbval_sdk.crypto.audit import record_access
+
         record_access(object.__getattribute__(self, "_label"))
         return _ProtectedStr(object.__getattribute__(self, "_buf").decode("utf-8"))
 
