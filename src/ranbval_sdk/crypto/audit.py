@@ -14,10 +14,11 @@ Usage::
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 import traceback
-from typing import TypedDict
+from typing import Iterator, TypedDict
 
 
 class AuditEntry(TypedDict):
@@ -43,9 +44,7 @@ def record_access(label: str) -> None:
             caller = f"{frame.filename}:{frame.lineno}"
             break
     with _lock:
-        _log.append(
-            AuditEntry(label=label, timestamp=time.time(), caller=caller)
-        )
+        _log.append(AuditEntry(label=label, timestamp=time.time(), caller=caller))
 
 
 def get_audit_log() -> list[AuditEntry]:
@@ -58,3 +57,24 @@ def clear_audit_log() -> None:
     """Clear the in-memory audit log."""
     with _lock:
         _log.clear()
+
+
+@contextlib.contextmanager
+def audit_scope() -> Iterator[list[AuditEntry]]:
+    """Capture just the secret accesses that happen inside a ``with`` block.
+
+    Yields a list that is populated on exit with the entries recorded during the
+    block — handy for tests and debugging ("which secrets did this code touch?")::
+
+        with audit_scope() as accesses:
+            client = OpenAI(api_key=vault.reveal("OPENAI_API_KEY"))
+        assert [e["label"] for e in accesses] == ["OPENAI_API_KEY"]
+    """
+    with _lock:
+        start = len(_log)
+    captured: list[AuditEntry] = []
+    try:
+        yield captured
+    finally:
+        with _lock:
+            captured.extend(_log[start:])

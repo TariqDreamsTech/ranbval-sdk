@@ -4,6 +4,46 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [1.1.0] - 2026-07-07
+
+Internal reorganization and professionalization. **The public API is unchanged** — every
+`from ranbval_sdk import …` import works exactly as before.
+
+### Added
+- Concern-based subpackages: `config/` (`loader` + `access`), `crypto/` (`cipher`,
+  `secret_string`, `audit`, `repo_policy`), `telemetry/` (`client` + `decorators`),
+  `integrations/` (`factory`, `universal`, `proxy`), and internal `_internal/`
+  (`defaults`, `transport`). Only `__init__.py`, `exceptions.py`, and `py.typed` sit at the
+  package root.
+- Unified exception hierarchy in `ranbval_sdk.exceptions`: a `RanbvalError` base with
+  `RanbvalDecryptError`, `RanbvalConfigError`, `MissingKeyError`, `RepoNotAllowedError`,
+  `RepoPolicyError`, and `ProxyError`. Each also subclasses the built-in it replaces
+  (`ValueError` / `KeyError` / `PermissionError` / `RuntimeError`), so existing
+  `except ValueError` / `except PermissionError` code keeps catching.
+- `py.typed` marker — the package now ships type information (PEP 561).
+- `__version__` attribute on the package.
+
+### Changed
+- Split the 528-line `dot_ranbval.py` into `config/loader.py` (file loading) and
+  `config/access.py` (`Vault`, `inject`, `secrets`, `Secret`). `crypto.py`,
+  `secret_string.py`, `audit.py`, `telemetry.py`, `http_tls.py`, `repo_policy.py`, and
+  `proxy.py` moved into their concern subpackages.
+- Tests moved to `tests/`; the manual integration script moved to `scripts/`.
+- `crypto.cipher.PBKDF2_ITERATIONS` extracted as a named constant (value unchanged at
+  100,000 — see Notes).
+
+### Notes
+- Deep internal module paths (e.g. `ranbval_sdk.dot_ranbval`, `ranbval_sdk.http_tls`,
+  `ranbval_sdk.secret_string`) were part of the internal layout, not the public API, and are
+  no longer importable — use the top-level `from ranbval_sdk import …` exports (and
+  `from ranbval_sdk.telemetry import salt_from_ranbval_token`, `from ranbval_sdk.crypto import …`,
+  which still resolve via the subpackages).
+- PBKDF2 iterations remain **100,000**, kept in lock-step with the Ranbval control plane and
+  the Node SDK. Raising toward the OWASP-2023 figure (600,000) requires a coordinated
+  versioned-token migration across the server and both SDKs — tracked as future work.
+
+---
+
 ## [0.9.0] - 2024-12-01
 
 ### Added

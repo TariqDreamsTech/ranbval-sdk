@@ -12,6 +12,8 @@ import os
 import re
 from pathlib import Path
 
+from ranbval_sdk.exceptions import RanbvalConfigError
+
 
 def resolve_ranbval_mode(mode: str | None = None) -> str:
     """
@@ -198,14 +200,16 @@ def load_ranbval(
 
     # Move all *_PROJECT_SECRET keys from os.environ into the in-memory secret store.
     # This removes them from os.environ so they can't be read by os.environ inspection.
-    from ranbval_sdk.crypto import _store_project_secret
+    from ranbval_sdk.crypto.cipher import _store_project_secret
+
     for key in list(os.environ.keys()):
         if key.endswith("_PROJECT_SECRET") and os.environ.get(key):
             _store_project_secret(key, os.environ[key])
 
     # Patch builtins.print and sys.stdout.write to raise if a protected secret
     # value is passed directly — prevents accidental plaintext output.
-    from ranbval_sdk.secret_string import install_output_guards
+    from ranbval_sdk.crypto.secret_string import install_output_guards
+
     install_output_guards()
 
     return True
@@ -228,14 +232,14 @@ def get_project_key(env_var: str) -> str:
     prefix = os.environ.get("RANBVAL_PROJECT_PREFIX", "")
     if prefix and not env_var.upper().startswith(prefix + "_"):
         project_name = os.environ.get("RANBVAL_PROJECT_NAME", prefix)
-        raise ValueError(
+        raise RanbvalConfigError(
             f"Key {env_var!r} does not belong to project {project_name!r} "
             f"(expected prefix {prefix + '_'!r}). "
             "Pass the correct project_name to load_ranbval() or use the right .ranbval file."
         )
     value = os.environ.get(env_var, "")
     if not value:
-        raise ValueError(
+        raise RanbvalConfigError(
             f"Environment variable {env_var!r} is not set. "
             "Check your .ranbval file or load_ranbval() call."
         )

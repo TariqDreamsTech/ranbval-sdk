@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v0.10.0`
+# Ranbval SDK `v1.1.0`
 
 Keep API secrets out of plaintext config. Encrypt them in the Ranbval dashboard, store encrypted tokens in `.ranbval` files, decrypt only at runtime — AES-256-GCM with PBKDF2 key derivation, no plaintext ever touches source control.
 
@@ -72,6 +72,38 @@ OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
 | `find_ranbval_file()` | Locate the nearest `.ranbval*` file on disk |
 | `find_ranbval_directory()` | Locate the config root directory |
 | `resolve_ranbval_mode()` | Determine the active mode from env/args |
+
+---
+
+## Package Layout
+
+Everything is organized by concern. You only import from the top level
+(`from ranbval_sdk import …`); the table shows where each piece lives.
+
+```
+ranbval_sdk/
+├── __init__.py          # the public API (re-exports everything below)
+├── exceptions.py        # RanbvalError hierarchy
+├── py.typed             # ships type information (PEP 561)
+├── config/              # your .ranbval configuration surface
+│   ├── loader.py        #   load_ranbval, find_*, resolve_ranbval_mode, get_project_key
+│   └── access.py        #   Vault, env, inject, secrets, iter_secrets, Secret, SecretConfig
+├── crypto/              # cryptography & sealed secrets
+│   ├── cipher.py        #   AES-256-GCM decrypt + project-secret resolution
+│   ├── secret_string.py #   SecretString — the sealed, never-printable value
+│   ├── audit.py         #   in-memory log of every .use()
+│   └── repo_policy.py   #   git-remote provenance enforcement (the decrypt gate)
+├── telemetry/           # usage reporting to the Live Monitor
+│   ├── client.py        #   emit_telemetry / aemit_telemetry
+│   └── decorators.py    #   @track / tracked()
+├── integrations/        # calling your vendor SDKs safely
+│   ├── factory.py       #   secure_client
+│   ├── universal.py     #   build_secure_client
+│   └── proxy.py         #   proxy_request / aproxy_request (key never leaves the server)
+└── _internal/           # private cross-cutting utilities
+    ├── defaults.py      #   shared constants
+    └── transport.py     #   HTTPS via urllib + certifi
+```
 
 ---
 

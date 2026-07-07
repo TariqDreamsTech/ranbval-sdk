@@ -1,19 +1,28 @@
-"""POST /api/telemetry — use with any HTTP stack after ``load_ranbval()``."""
+"""Telemetry client: build and POST a usage event to ``/api/telemetry``.
+
+Works with any HTTP stack after ``load_ranbval()``. The synchronous
+:func:`emit_telemetry` can fire in the background; :func:`aemit_telemetry` offloads it to a
+worker thread for asyncio/FastAPI. Only a non-reversible token salt is sent — never plaintext.
+"""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import socket
 import sys
 import threading
-from typing import Optional
-from urllib.parse import urlparse
 import urllib.request
+from typing import Any, Optional
+from urllib.parse import urlparse
 
-from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST, warn_telemetry_send_failed
-from ranbval_sdk import http_tls
-from ranbval_sdk.repo_policy import get_git_remote_origin as _get_git_remote
+from ranbval_sdk._internal import transport as _transport
+from ranbval_sdk._internal.defaults import (
+    DEFAULT_RANBVAL_HOST,
+    warn_telemetry_send_failed,
+)
+from ranbval_sdk.crypto.repo_policy import get_git_remote_origin as _get_git_remote
 
 
 def _get_git_branch() -> str | None:
@@ -82,7 +91,9 @@ def emit_telemetry(
         if not salt:
             return
 
-        h = (host_url or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip("/")
+        h = (host_url or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip(
+            "/"
+        )
         repo_path = os.getcwd()
         machine_name = socket.gethostname()
         git_url = _get_git_remote()
@@ -91,7 +102,14 @@ def emit_telemetry(
         transport = (parsed.scheme or "http").lower()
         ci_environment = any(
             os.environ.get(k)
-            for k in ("CI", "GITHUB_ACTIONS", "GITLAB_CI", "BUILDKITE", "CIRCLECI", "JENKINS_URL")
+            for k in (
+                "CI",
+                "GITHUB_ACTIONS",
+                "GITLAB_CI",
+                "BUILDKITE",
+                "CIRCLECI",
+                "JENKINS_URL",
+            )
         )
 
         sec = {
@@ -124,7 +142,7 @@ def emit_telemetry(
             method="POST",
         )
         try:
-            with http_tls.urlopen(req, timeout=5) as resp:
+            with _transport.urlopen(req, timeout=5) as resp:
                 resp.read()
         except Exception as e:
             warn_telemetry_send_failed(h, e)
@@ -133,3 +151,15 @@ def emit_telemetry(
         threading.Thread(target=_post, daemon=True).start()
     else:
         _post()
+
+
+async def aemit_telemetry(**kwargs: Any) -> None:
+    """Async, non-blocking telemetry for event loops (FastAPI, asyncio).
+
+    Same arguments as :func:`emit_telemetry`, but the blocking POST runs on a worker
+    thread via ``asyncio.to_thread`` so the event loop is never stalled::
+
+        await aemit_telemetry(vault_token_env="OPENAI_API_KEY", model_used="gpt-4o")
+    """
+    kwargs.setdefault("background", False)
+    await asyncio.to_thread(emit_telemetry, **kwargs)
