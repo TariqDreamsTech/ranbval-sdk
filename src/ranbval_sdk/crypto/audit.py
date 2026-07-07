@@ -44,9 +44,7 @@ def record_access(label: str) -> None:
             caller = f"{frame.filename}:{frame.lineno}"
             break
     with _lock:
-        _log.append(
-            AuditEntry(label=label, timestamp=time.time(), caller=caller)
-        )
+        _log.append(AuditEntry(label=label, timestamp=time.time(), caller=caller))
 
 
 def get_audit_log() -> list[AuditEntry]:

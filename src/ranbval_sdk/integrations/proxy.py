@@ -39,13 +39,12 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from ranbval_sdk.defaults import DEFAULT_RANBVAL_HOST
-from ranbval_sdk.crypto import _find_project_secret_for
-from ranbval_sdk import http_tls
+from ranbval_sdk._internal import transport
+from ranbval_sdk.crypto.cipher import _find_project_secret_for
+from ranbval_sdk._internal.defaults import DEFAULT_RANBVAL_HOST
+from ranbval_sdk.exceptions import ProxyError
 
-
-class ProxyError(RuntimeError):
-    """Raised when the Ranbval execute proxy returns an error or is unreachable."""
+__all__ = ["proxy_request", "aproxy_request", "ProxyError"]
 
 
 def proxy_request(
@@ -119,7 +118,9 @@ def proxy_request(
         The proxy rejected the request (bad credentials, unknown token, etc.)
         or the proxy itself was unreachable.
     """
-    host = (host_url or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip("/")
+    host = (host_url or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip(
+        "/"
+    )
 
     # ── Resolve api_key ──────────────────────────────────────────────────────
     resolved_api_key = (api_key or os.environ.get("RANBVAL_API_KEY") or "").strip()
@@ -138,7 +139,9 @@ def proxy_request(
             except ValueError:
                 pass
         if not resolved_project_secret:
-            resolved_project_secret = os.environ.get("RANBVAL_PROJECT_SECRET", "").strip()
+            resolved_project_secret = os.environ.get(
+                "RANBVAL_PROJECT_SECRET", ""
+            ).strip()
     if not resolved_project_secret:
         raise ProxyError(
             "No project secret found. Set RANBVAL_PROJECT_SECRET in your .ranbval file "
@@ -171,7 +174,7 @@ def proxy_request(
     )
 
     try:
-        with http_tls.urlopen(req, timeout=60) as resp:
+        with transport.urlopen(req, timeout=60) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
             return json.loads(raw)
     except urllib.error.HTTPError as e:
@@ -184,13 +187,9 @@ def proxy_request(
             detail = json.loads(body_text).get("detail", body_text)
         except Exception:
             detail = body_text
-        raise ProxyError(
-            f"Ranbval proxy returned HTTP {e.code}: {detail}"
-        ) from e
+        raise ProxyError(f"Ranbval proxy returned HTTP {e.code}: {detail}") from e
     except urllib.error.URLError as e:
-        raise ProxyError(
-            f"Could not reach Ranbval proxy at {host!r}: {e}"
-        ) from e
+        raise ProxyError(f"Could not reach Ranbval proxy at {host!r}: {e}") from e
 
 
 async def aproxy_request(token: str, target_url: str, **kwargs: Any) -> dict[str, Any]:

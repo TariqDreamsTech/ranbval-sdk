@@ -1,11 +1,9 @@
 """Tests for SecretString — bytearray backend, context manager, wipe."""
 
 import json
-import sys
 import unittest
 
-sys.path.insert(0, "src")
-from ranbval_sdk.secret_string import SecretString
+from ranbval_sdk import SecretString
 
 
 class TestLeakBlocking(unittest.TestCase):

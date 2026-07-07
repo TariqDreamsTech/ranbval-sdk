@@ -9,7 +9,8 @@ import urllib.parse
 import urllib.request
 from urllib.parse import urlparse
 
-from ranbval_sdk import http_tls
+from ranbval_sdk._internal import transport
+from ranbval_sdk.exceptions import RepoNotAllowedError, RepoPolicyError
 
 
 def normalize_git_remote_url(url: str | None) -> str | None:
@@ -72,8 +73,10 @@ def fetch_repo_policy(ranbval_host: str, client_salt: str) -> dict:
     base = ranbval_host.rstrip("/")
     qs = urllib.parse.urlencode({"client_salt": client_salt})
     url = f"{base}/api/public/repo-policy?{qs}"
-    req = urllib.request.Request(url, method="GET", headers={"Accept": "application/json"})
-    with http_tls.urlopen(req, timeout=12) as resp:
+    req = urllib.request.Request(
+        url, method="GET", headers={"Accept": "application/json"}
+    )
+    with transport.urlopen(req, timeout=12) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -90,15 +93,15 @@ def assert_repo_allowed_for_decrypt(ranbval_host: str, client_salt: str) -> None
         policy = fetch_repo_policy(ranbval_host, client_salt)
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            raise PermissionError(
+            raise RepoPolicyError(
                 "Ranbval: unknown session for this key (repo policy could not be loaded). "
                 "Check RANBVAL_HOST and that this token belongs to a valid project session."
             ) from e
-        raise PermissionError(
+        raise RepoPolicyError(
             f"Ranbval: could not load repo policy (HTTP {e.code}). Check RANBVAL_HOST."
         ) from e
     except urllib.error.URLError as e:
-        raise PermissionError(
+        raise RepoPolicyError(
             f"Ranbval: could not reach {ranbval_host!r} to verify allowed repositories: {e}"
         ) from e
 
@@ -108,14 +111,14 @@ def assert_repo_allowed_for_decrypt(ranbval_host: str, client_salt: str) -> None
     allowed = policy.get("allowed_repos") or []
     origin = get_git_remote_origin()
     if not origin:
-        raise PermissionError(
+        raise RepoNotAllowedError(
             "Ranbval: this key may only be used from an allowlisted Git repository, "
             "but no `git remote origin` was found. Work inside a clone of an allowed repo "
             "(run `git remote -v` to confirm)."
         )
 
     if not _origin_allowed(origin, allowed):
-        raise PermissionError(
+        raise RepoNotAllowedError(
             "Ranbval: you are not allowed to use this key from this repository. "
             f"Current origin is {origin!r}. Add this URL (or its GitHub https/ssh equivalent) "
             "to Allowed repositories in the Ranbval dashboard for this project."

@@ -1,70 +1,76 @@
+"""Ranbval SDK — keep API secrets out of plaintext config.
+
+Encrypted vault tokens live in your ``.ranbval`` file; the SDK decrypts them only at the
+moment of use and never lets the plaintext reach a ``print``, log, or ``repr``.
+
+Public API, grouped by concern (each name re-exported from its home subpackage):
+
+- **Config** (:mod:`ranbval_sdk.config`) — ``load_ranbval``, ``get_project_key``,
+  ``find_ranbval_file``, ``find_ranbval_directory``, ``resolve_ranbval_mode``.
+- **Access** (:mod:`ranbval_sdk.config.access`) — ``Vault``, ``env``, ``inject``,
+  ``secrets``, ``iter_secrets``, ``Secret``, ``SecretConfig``, ``SecretProvider``.
+- **Crypto** (:mod:`ranbval_sdk.crypto`) — ``safe_decrypt``, ``decrypt_key``,
+  ``SecretString``, ``get_audit_log``, ``clear_audit_log``, ``audit_scope``.
+- **Telemetry** (:mod:`ranbval_sdk.telemetry`) — ``emit_telemetry``, ``aemit_telemetry``,
+  ``track``, ``tracked``.
+- **Integrations** (:mod:`ranbval_sdk.integrations`) — ``secure_client``, ``build_secure_client``.
+- **Secure proxy** (:mod:`ranbval_sdk.integrations.proxy`) — ``proxy_request``, ``aproxy_request``.
+- **Exceptions** (:mod:`ranbval_sdk.exceptions`) — ``RanbvalError`` and its subclasses.
+
+Basic use::
+
+    from ranbval_sdk import load_ranbval, decrypt_key
+    load_ranbval()
+    client = openai.OpenAI(api_key=decrypt_key("OPENAI_API_KEY").use())
 """
-Ranbval SDK — keep API secrets out of plaintext config.
 
-- ``load_ranbval()``    load layered .ranbval* files into os.environ
-- ``safe_decrypt()``   decrypt a vault token locally (with repo allowlist)
-- ``decrypt_key()``    decrypt by env var name — auto-discovers project secret from prefix
-- ``proxy_request()``  route any HTTP request through Ranbval secure proxy (secret never local)
-- ``emit_telemetry()`` log a request to the Ranbval Live Monitor
-"""
-
-from ranbval_sdk.crypto import safe_decrypt, decrypt_key
-from ranbval_sdk.proxy import proxy_request, aproxy_request, ProxyError
-
-from ranbval_sdk.dot_ranbval import (
-    find_ranbval_directory,
-    find_ranbval_file,
-    get_project_key,
-    load_ranbval,
-    resolve_ranbval_mode,
-    # High-level, ergonomic config access
-    Vault,
-    env,
-    inject,
-    secrets,
-    iter_secrets,
+from ranbval_sdk.config import (
     Secret,
     SecretConfig,
     SecretProvider,
+    Vault,
+    env,
+    find_ranbval_directory,
+    find_ranbval_file,
+    get_project_key,
+    inject,
+    iter_secrets,
+    load_ranbval,
+    resolve_ranbval_mode,
+    secrets,
 )
+from ranbval_sdk.crypto import (
+    SecretString,
+    audit_scope,
+    clear_audit_log,
+    decrypt_key,
+    get_audit_log,
+    safe_decrypt,
+)
+from ranbval_sdk.exceptions import (
+    MissingKeyError,
+    ProxyError,
+    RanbvalConfigError,
+    RanbvalDecryptError,
+    RanbvalError,
+    RepoNotAllowedError,
+    RepoPolicyError,
+)
+from ranbval_sdk.integrations.factory import secure_client
+from ranbval_sdk.integrations.universal import build_secure_client
+from ranbval_sdk.integrations.proxy import aproxy_request, proxy_request
+from ranbval_sdk.telemetry import aemit_telemetry, emit_telemetry, track, tracked
 
-from ranbval_sdk.telemetry import emit_telemetry, aemit_telemetry, track, tracked
-
-from ranbval_sdk.secret_string import SecretString
-
-from ranbval_sdk.audit import get_audit_log, clear_audit_log, audit_scope
-
-from .integrations.factory import secure_client
-from .integrations.universal import build_secure_client
+__version__ = "1.1.0"
 
 __all__ = [
-    # Core
-    "emit_telemetry",
-    "safe_decrypt",
-    "decrypt_key",
+    # Config
     "load_ranbval",
     "get_project_key",
     "find_ranbval_file",
     "find_ranbval_directory",
     "resolve_ranbval_mode",
-    # Secret wrapper
-    "SecretString",
-    # HTTP integrations
-    "build_secure_client",
-    "secure_client",
-    # Secure proxy
-    "proxy_request",
-    "aproxy_request",
-    "ProxyError",
-    # Telemetry ergonomics
-    "track",
-    "tracked",
-    "aemit_telemetry",
-    # Audit
-    "get_audit_log",
-    "clear_audit_log",
-    "audit_scope",
-    # High-level ergonomic API
+    # Access
     "Vault",
     "env",
     "inject",
@@ -73,4 +79,30 @@ __all__ = [
     "Secret",
     "SecretConfig",
     "SecretProvider",
+    # Crypto
+    "safe_decrypt",
+    "decrypt_key",
+    "SecretString",
+    "get_audit_log",
+    "clear_audit_log",
+    "audit_scope",
+    # Telemetry
+    "emit_telemetry",
+    "aemit_telemetry",
+    "track",
+    "tracked",
+    # Integrations
+    "secure_client",
+    "build_secure_client",
+    # Secure proxy
+    "proxy_request",
+    "aproxy_request",
+    # Exceptions
+    "RanbvalError",
+    "RanbvalDecryptError",
+    "RanbvalConfigError",
+    "MissingKeyError",
+    "RepoNotAllowedError",
+    "RepoPolicyError",
+    "ProxyError",
 ]

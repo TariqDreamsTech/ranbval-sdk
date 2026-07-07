@@ -1,11 +1,12 @@
 [tool.poetry]
 name = "ranbval-sdk"
-version = "1.0.1"
+version = "1.1.0"
 description = "Keep API secrets out of plaintext config: layered .ranbval* env files, decrypt vault tokens only when used, optional usage telemetry—minimal deps, your own HTTP/SDK stack."
 authors = ["Ahsan Tariq", "Hussnain Tariq", "Sundas Tariq","Laiba Saleem"]
 readme = "README.md"
 build = "build.py"
 license = "MIT"
+include = ["src/ranbval_sdk/py.typed"]
 homepage = "https://www.ranbval.com"
 repository = "https://github.com/TariqDreamsTech/ranbval-sdk"
 documentation = "https://api.ranbval.com/docs"
@@ -28,3 +29,6 @@ certifi = ">=2024.0.0"
 [build-system]
 requires = ["poetry-core>=1.0.0", "Cython>=3.0.0", "setuptools"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

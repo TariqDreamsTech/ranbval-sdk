@@ -1,17 +1,21 @@
 """Tests for mlock, audit log, and Token TTL security features."""
 
 import os
-import sys
 import time
 import threading
 import unittest
 
-sys.path.insert(0, "src")
 os.environ["RANBVAL_SKIP_REPO_CHECK"] = "1"
 
-from ranbval_sdk.secret_string import SecretString, _try_mlock
-from ranbval_sdk.audit import get_audit_log, clear_audit_log, record_access
-from ranbval_sdk.crypto import safe_decrypt, derive_key
+from ranbval_sdk import SecretString
+from ranbval_sdk.crypto import (
+    clear_audit_log,
+    derive_key,
+    get_audit_log,
+    record_access,
+    safe_decrypt,
+)
+from ranbval_sdk.crypto.secret_string import _try_mlock
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
