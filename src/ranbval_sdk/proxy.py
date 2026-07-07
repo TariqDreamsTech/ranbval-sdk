@@ -31,6 +31,7 @@ Inject modes
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import urllib.error
@@ -190,3 +191,14 @@ def proxy_request(
         raise ProxyError(
             f"Could not reach Ranbval proxy at {host!r}: {e}"
         ) from e
+
+
+async def aproxy_request(token: str, target_url: str, **kwargs: Any) -> dict[str, Any]:
+    """Async, non-blocking variant of :func:`proxy_request` for event loops.
+
+    Runs the blocking request on a worker thread so FastAPI / asyncio callers never
+    stall the loop. Accepts the same keyword arguments as :func:`proxy_request`::
+
+        result = await aproxy_request(token, "https://api.openai.com/v1/...", body={...})
+    """
+    return await asyncio.to_thread(proxy_request, token, target_url, **kwargs)

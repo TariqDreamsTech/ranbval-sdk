@@ -9,7 +9,7 @@ Ranbval SDK — keep API secrets out of plaintext config.
 """
 
 from ranbval_sdk.crypto import safe_decrypt, decrypt_key
-from ranbval_sdk.proxy import proxy_request, ProxyError
+from ranbval_sdk.proxy import proxy_request, aproxy_request, ProxyError
 
 from ranbval_sdk.dot_ranbval import (
     find_ranbval_directory,
@@ -17,13 +17,22 @@ from ranbval_sdk.dot_ranbval import (
     get_project_key,
     load_ranbval,
     resolve_ranbval_mode,
+    # High-level, ergonomic config access
+    Vault,
+    env,
+    inject,
+    secrets,
+    iter_secrets,
+    Secret,
+    SecretConfig,
+    SecretProvider,
 )
 
-from ranbval_sdk.telemetry import emit_telemetry
+from ranbval_sdk.telemetry import emit_telemetry, aemit_telemetry, track, tracked
 
 from ranbval_sdk.secret_string import SecretString
 
-from ranbval_sdk.audit import get_audit_log, clear_audit_log
+from ranbval_sdk.audit import get_audit_log, clear_audit_log, audit_scope
 
 from .integrations.factory import secure_client
 from .integrations.universal import build_secure_client
@@ -45,8 +54,23 @@ __all__ = [
     "secure_client",
     # Secure proxy
     "proxy_request",
+    "aproxy_request",
     "ProxyError",
+    # Telemetry ergonomics
+    "track",
+    "tracked",
+    "aemit_telemetry",
     # Audit
     "get_audit_log",
     "clear_audit_log",
+    "audit_scope",
+    # High-level ergonomic API
+    "Vault",
+    "env",
+    "inject",
+    "secrets",
+    "iter_secrets",
+    "Secret",
+    "SecretConfig",
+    "SecretProvider",
 ]
