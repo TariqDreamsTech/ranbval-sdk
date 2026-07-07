@@ -18,7 +18,6 @@ Create a `.ranbval.local` file in the project root with your test credentials:
 
 ```bash
 RANBVAL_PROJECT_SECRET=your_project_secret
-RANBVAL_SKIP_REPO_CHECK=1
 ```
 
 ---
@@ -26,17 +25,20 @@ RANBVAL_SKIP_REPO_CHECK=1
 ## Running Tests
 
 ```bash
-# Run all tests
-poetry run python -m pytest
+# Run all tests (discovered from tests/)
+poetry run pytest
 
 # Run a specific test file
-poetry run python -m pytest test_security_features.py -v
+poetry run pytest tests/test_security_features.py -v
 
-# Run with output (useful when debugging SecretString behaviour)
-poetry run python test_secret_string.py
+# Lint and format checks
+poetry run ruff check src
+poetry run black --check src
 ```
 
-All tests must pass before submitting a pull request. Do not disable the repo check or telemetry in production code paths.
+All tests, `ruff`, and `black` must pass before submitting a pull request. Repo-allowlist
+enforcement and usage telemetry are always on and server-controlled — there is no client
+flag to disable them.
 
 ---
 
@@ -46,9 +48,10 @@ All tests must pass before submitting a pull request. Do not disable the repo ch
 - Use type annotations for all public function signatures
 - Keep functions focused — one responsibility per function
 - Do not import from `src/ranbval_sdk` internals in tests; use the public API from `__init__.py`
-- New cryptographic logic must go through the existing `crypto.py` module — do not introduce a second encryption path
+- New cryptographic logic must go through the existing `crypto/` package — do not introduce a second encryption path
+- Keep each module within its concern subpackage (`config/`, `crypto/`, `telemetry/`, `integrations/`); only `__init__.py`, `exceptions.py`, and `py.typed` live at the package root
 
-Formatting is not currently enforced by a linter, but please keep diffs clean and consistent with the surrounding code.
+Formatting is enforced with `ruff` and `black` — run both before opening a PR.
 
 ---
 
@@ -58,17 +61,15 @@ Formatting is not currently enforced by a linter, but please keep diffs clean an
 ranbval-sdk/
 ├── src/ranbval_sdk/
 │   ├── __init__.py        ← public API surface (all exports live here)
-│   ├── crypto.py          ← AES-256-GCM + PBKDF2 decrypt logic
-│   ├── secret_string.py   ← SecretString wrapper
-│   ├── dot_ranbval.py     ← .ranbval file loader and layer merge
-│   ├── telemetry.py       ← emit_telemetry() implementation
-│   ├── audit.py           ← in-process audit log
-│   ├── proxy.py           ← proxy_request() and ProxyError
-│   ├── repo_policy.py     ← git remote allowlist check
-│   ├── http_tls.py        ← TLS-verified HTTP helpers
-│   ├── defaults.py        ← env var defaults and constants
-│   └── integrations/      ← secure_client / build_secure_client
-├── test_*.py              ← test files (pytest)
+│   ├── exceptions.py      ← RanbvalError hierarchy
+│   ├── py.typed           ← PEP 561 type marker
+│   ├── config/            ← loader.py (.ranbval loading) + access.py (Vault/inject/secrets)
+│   ├── crypto/            ← cipher.py, secret_string.py, audit.py, repo_policy.py
+│   ├── telemetry/         ← client.py (emit/aemit) + decorators.py (@track/tracked)
+│   ├── integrations/      ← factory.py, universal.py, proxy.py
+│   └── _internal/         ← defaults.py, transport.py (private cross-cutting utils)
+├── tests/                 ← pytest suite (+ conftest.py)
+├── scripts/               ← manual integration scripts
 ├── pyproject.toml
 └── build.py
 ```
@@ -97,7 +98,7 @@ ranbval-sdk/
 
 Open an issue on GitHub with:
 - Python version and OS
-- Minimal reproduction script (use `RANBVAL_SKIP_REPO_CHECK=1` and a dummy token if needed)
+- Minimal reproduction script
 - Full traceback
 
 Do not include real project secrets or vault tokens in issues.

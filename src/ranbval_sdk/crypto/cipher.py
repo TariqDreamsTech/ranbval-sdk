@@ -231,4 +231,38 @@ def decrypt_key(env_var: str) -> SecretString:
         return SecretString(token)
 
     project_secret = _find_project_secret_for(env_var)
-    return safe_decrypt(token, project_secret)
+    started = time.perf_counter()
+    secret = safe_decrypt(token, project_secret)
+    roundtrip_ms = (time.perf_counter() - started) * 1000.0
+    _auto_report_usage(env_var, roundtrip_ms)
+    return secret
+
+
+def _auto_report_usage(env_var: str, roundtrip_ms: float) -> None:
+    """Report this decrypt to the Live Monitor automatically — no manual ``emit_telemetry``.
+
+    Usage is adaptively aggregated (first use of a credential is sent immediately with its
+    decrypt latency; routine repeats are counted and flushed as one aggregated event carrying an
+    ``item_count`` weight). The caller can still call ``emit_telemetry`` directly for richer
+    custom events. Any failure here never affects decryption.
+    """
+    try:
+        from ranbval_sdk.telemetry.client import emit_telemetry, salt_from_ranbval_token
+        from ranbval_sdk.telemetry.sampling import usage_sampler
+
+        salt = salt_from_ranbval_token(os.environ.get(env_var, ""))
+        if not salt:
+            return
+        item_count = usage_sampler.decide(salt)
+        if item_count <= 0:
+            return  # counted locally; flushed as an aggregate later
+        emit_telemetry(
+            client_salt=salt,
+            model_used="secret.access",
+            event_kind="platform.invocation",
+            item_count=item_count,
+            roundtrip_ms=roundtrip_ms,
+            background=True,
+        )
+    except Exception:
+        pass

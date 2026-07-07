@@ -1,11 +1,8 @@
 """Tests for mlock, audit log, and Token TTL security features."""
 
-import os
 import time
 import threading
 import unittest
-
-os.environ["RANBVAL_SKIP_REPO_CHECK"] = "1"
 
 from ranbval_sdk import SecretString
 from ranbval_sdk.crypto import (
@@ -15,7 +12,13 @@ from ranbval_sdk.crypto import (
     record_access,
     safe_decrypt,
 )
+from ranbval_sdk.crypto import cipher as _cipher
 from ranbval_sdk.crypto.secret_string import _try_mlock
+
+# Repo-allowlist enforcement now always contacts the control plane (no local skip).
+# These unit tests decrypt locally-built tokens with no server, so stub the network
+# enforcement to a no-op — this exercises the crypto path without a live backend.
+_cipher.assert_repo_allowed_for_decrypt = lambda *args, **kwargs: None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

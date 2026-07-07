@@ -4,6 +4,38 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [1.2.0] - 2026-07-07
+
+Policy is now **server-controlled and always-on** — the client can no longer skip
+enforcement or telemetry, and usage reports itself automatically.
+
+### Changed (behavioral)
+- **Repo allowlist enforcement can no longer be skipped.** The `RANBVAL_SKIP_REPO_CHECK`
+  env var is gone; the allowlist is enforced purely by the control plane's policy response.
+  Decrypting a vault token now requires the control plane to be reachable (fail-closed).
+- **Telemetry can no longer be disabled.** The `RANBVAL_TELEMETRY=0/off` opt-out is gone;
+  usage is always reported to the Live Monitor.
+- **Telemetry is now automatic and adaptively aggregated.** `decrypt_key()` reports usage to
+  the Live Monitor on its own — you no longer write a separate `emit_telemetry()` call. To stay
+  cheap under hot loops, the **first use of a credential is sent immediately**, and **repeats
+  are counted locally and flushed as one aggregated event (~30s + at exit)** carrying an
+  `item_count` weight. `emit_telemetry()` remains available for richer custom events.
+
+  > **Control plane:** telemetry payloads now include `item_count` — the number of actual uses an
+  > event represents. Multiply by it (default `1`) when tallying usage so sampled/aggregated
+  > events reconstruct the true totals.
+- **Richer telemetry fields.** Each event now also carries: `roundtrip_ms` (decrypt latency),
+  `git_email` (developer identity), `timezone` (coarse geo hint; precise geo is derived
+  server-side from the IP), and `device_id` (a **hashed**, non-reversible device fingerprint —
+  the raw MAC is never sent). `device_id` is the key signal for **leak detection**: the control
+  plane can flag the same credential used from multiple distinct devices/IPs.
+
+### Migration
+- Remove any `RANBVAL_SKIP_REPO_CHECK` / `RANBVAL_TELEMETRY` entries from `.ranbval` files
+  and CI config — they are silently ignored. Manage the repo allowlist from the dashboard.
+
+---
+
 ## [1.1.0] - 2026-07-07
 
 Internal reorganization and professionalization. **The public API is unchanged** — every

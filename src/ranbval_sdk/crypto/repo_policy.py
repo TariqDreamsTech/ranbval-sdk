@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -82,13 +81,13 @@ def fetch_repo_policy(ranbval_host: str, client_salt: str) -> dict:
 
 def assert_repo_allowed_for_decrypt(ranbval_host: str, client_salt: str) -> None:
     """
-    If the project has any allowed_repos, refuse to proceed unless
-    `git remote origin` matches one of them (https / ssh / .git normalized).
-    Set RANBVAL_SKIP_REPO_CHECK=1 to bypass (local dev only).
+    Enforce the project's repo allowlist before decryption.
+
+    The policy is fetched from the Ranbval control plane and cannot be bypassed on the
+    client: if the project has any ``allowed_repos``, decryption proceeds only when
+    ``git remote origin`` matches one of them (https / ssh / .git normalized). This is a
+    mandatory, server-controlled check — there is no local skip.
     """
-    skip = (os.environ.get("RANBVAL_SKIP_REPO_CHECK") or "").strip().lower()
-    if skip in ("1", "true", "yes", "on"):
-        return
     try:
         policy = fetch_repo_policy(ranbval_host, client_salt)
     except urllib.error.HTTPError as e:

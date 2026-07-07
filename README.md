@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v1.1.0`
+# Ranbval SDK `v1.2.0`
 
 Keep API secrets out of plaintext config. Encrypt them in the Ranbval dashboard, store encrypted tokens in `.ranbval` files, decrypt only at runtime — AES-256-GCM with PBKDF2 key derivation, no plaintext ever touches source control.
 
@@ -19,8 +19,8 @@ With so many LLM APIs and third-party services in use today, managing secrets ha
 | Problem | Ranbval Solution |
 |---------|-----------------|
 | API keys committed to Git | Encrypted `.ranbval*` files — plaintext never touches source control |
-| Keys copied and shared freely | Repo allowlist — if a repo is not authorized, the key cannot decrypt |
-| No idea who used what, when | Live Monitor — every usage logged with machine, repo, model, tokens |
+| Keys copied and shared freely | Repo allowlist — enforced by the control plane; an unauthorized repo cannot decrypt, and it can't be skipped from the client |
+| No idea who used what, when | Live Monitor — every decrypt is reported automatically with machine, repo, model, tokens |
 | `load_dotenv()` scattered everywhere | One call: `load_ranbval()` — layered, mode-aware, zero side effects on import |
 
 ---
@@ -34,7 +34,8 @@ import os, openai
 # 1. Load encrypted config from .ranbval files (no network, no decryption)
 load_ranbval()
 
-# 2. Decrypt a vault token — returns a SecretString, never printable
+# 2. Decrypt a vault token — returns a SecretString, never printable.
+#    This also auto-reports the usage to your Live Monitor (no extra code).
 api_key = decrypt_key("OPENAI_API_KEY")
 
 # 3. Pass directly to the SDK — value is never exposed in logs or prints
@@ -65,7 +66,7 @@ OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
 | `secure_client()` | Wrap a third-party SDK class for auto-decrypt + telemetry |
 | `build_secure_client()` | Same as `secure_client()` but returns a subclass instead of an instance |
 | `proxy_request()` | Route an HTTP request through the Ranbval proxy |
-| `emit_telemetry()` | POST a usage event to the Ranbval Live Monitor |
+| `emit_telemetry()` | Record a **custom** usage event (basic usage is auto-reported on every `decrypt_key()`) |
 | `get_audit_log()` | Return the in-process audit log list |
 | `clear_audit_log()` | Clear the in-process audit log |
 | `get_project_key()` | Read `RANBVAL_PROJECT_SECRET` from env |
@@ -191,14 +192,11 @@ headers = {"Authorization": f"Bearer {secret.use()}"}
 ```
 
 **Raises:**
-- `PermissionError` — this Git repo is not in the allowed list
-- `ValueError` — wrong project secret or corrupted token
+- `RepoNotAllowedError` (a `PermissionError`) — this Git repo is not in the allowed list
+- `RanbvalDecryptError` (a `ValueError`) — wrong project secret or corrupted token
 
-**Bypass flag (dev/CI only):**
-
-```bash
-RANBVAL_SKIP_REPO_CHECK=1   # skip git remote allowlist check
-```
+The repo allowlist is **enforced by the control plane and cannot be skipped on the client** —
+there is no local bypass flag. Manage the allowed repositories from the Ranbval dashboard.
 
 ---
 
@@ -217,7 +215,9 @@ api_key = decrypt_key("OPENAI_API_KEY")
 client = openai.OpenAI(api_key=api_key.use())
 ```
 
-This is the recommended pattern for most applications — it reduces boilerplate and keeps the project secret out of your application code.
+This is the recommended pattern for most applications — it reduces boilerplate and keeps the project secret out of your application code. Each call also **auto-reports the usage** to the Live Monitor.
+
+**Raises:** `RanbvalConfigError` (env var not set / no project secret), `RanbvalDecryptError` (wrong secret or corrupt token), `RepoNotAllowedError` (repo not in the allowlist) — all subclasses of `RanbvalError`, and each also a subclass of the built-in it replaces (`ValueError` / `PermissionError`).
 
 ---
 
@@ -307,7 +307,14 @@ client = SecureAnthropic()
 
 ### `emit_telemetry()`
 
-Posts a usage event to the Ranbval Live Monitor. Call it after your API request so the dashboard can track every usage against the correct vault credential.
+Posts a usage event to the Ranbval Live Monitor.
+
+> **You usually don't need to call this.** `decrypt_key()` already reports usage to the Live
+> Monitor automatically — and does it efficiently: the **first use of a credential is sent
+> immediately**, then **repeats are counted locally and flushed as one aggregated event**
+> (~every 30s and at process exit) carrying an `item_count` weight. So a hot loop that decrypts
+> the same key 10,000× produces a handful of events, not 10,000 POSTs. Call `emit_telemetry()`
+> only to record a *richer custom event* — e.g. model name and token counts after an LLM call.
 
 ```python
 from ranbval_sdk import emit_telemetry
@@ -340,10 +347,19 @@ emit_telemetry(
 | `prompt_tokens` | `int` | Input tokens (0 if not an LLM call) |
 | `completion_tokens` | `int` | Output tokens (0 if not an LLM call) |
 | `event_kind` | `str` | Event category (e.g. `"llm.chat"`, `"custom.request"`) |
+| `item_count` | `int` | Aggregation weight — how many actual uses this event represents (default `1`) |
+| `roundtrip_ms` | `float` | Client-measured decrypt/round-trip latency, if you want to report it |
 | `background` | `bool` | `True` = fire-and-forget in a daemon thread |
 | `host_url` | `str` | Override `RANBVAL_HOST` for this call |
 
 If no `client_salt` can be resolved the call is a silent no-op — safe to call even with plain (non-ranbval) keys.
+
+**What each event sends.** Only a non-reversible token salt (never the plaintext secret) plus operational
+metadata: SDK/Python version and platform, transport scheme, git branch and `git config user.email`
+(developer identity), a coarse `timezone` geo hint, decrypt latency, and a **hashed, non-reversible
+`device_id`** (a truncated SHA-256 of the machine ID — the raw MAC is never sent). The `device_id` is the
+signal the control plane uses for **leak detection**: the same credential appearing on multiple distinct
+devices/IPs raises an alert in the Live Monitor.
 
 ---
 
@@ -466,9 +482,12 @@ RANBVAL_PROJECT_SECRET=your_project_secret_from_dashboard
 | `RANBVAL_HOST` | `https://api.ranbval.com` | Ranbval API base URL |
 | `RANBVAL_ENV` | `development` | Active mode for layered config |
 | `RANBVAL_PROJECT_SECRET` | *(required)* | Project secret for `safe_decrypt()` / `decrypt_key()` |
-| `RANBVAL_SKIP_REPO_CHECK` | `0` | `1` = skip git remote allowlist check |
-| `RANBVAL_TELEMETRY` | `on` | `0` / `false` = disable telemetry POSTs |
 | `RANBVAL_TELEMETRY_DEBUG` | `0` | `1` = print telemetry errors to stderr |
+
+> Repo-allowlist enforcement and usage telemetry are **always on** and controlled by the
+> Ranbval dashboard — there is no client-side flag to skip either. `decrypt_key()` reports
+> each use to the Live Monitor automatically; call `emit_telemetry()` only when you want to
+> record richer custom events.
 
 ---
 
@@ -518,15 +537,22 @@ Your Code
     │
     ├── decrypt_key("ENV_VAR")
     │       │
-    │       ├── 1. Repo allowlist check  →  GET /api/public/repo-policy?client_salt=...
-    │       └── 2. AES-256-GCM decrypt   →  SecretString (value sealed, never printable)
+    │       ├── 1. Repo allowlist check  →  GET /api/public/repo-policy  (mandatory, server-controlled)
+    │       ├── 2. AES-256-GCM decrypt   →  SecretString (value sealed, never printable)
+    │       └── 3. Auto usage report     →  POST /api/telemetry → Live Monitor (automatic)
     │
-    ├── secret.use()            Only access point — pass directly to SDK / headers
-    │
-    └── emit_telemetry()        POST /api/telemetry → Ranbval Live Monitor
+    └── secret.use()            Only access point — pass directly to SDK / headers
 ```
 
-AES-256-GCM encryption with PBKDF2 key derivation. The project secret never leaves your environment — decryption happens entirely on your machine.
+AES-256-GCM encryption with PBKDF2 key derivation (100,000 iterations). The project secret
+never leaves your environment — the decryption itself happens on your machine. The repo
+allowlist check and usage reporting are always on and governed by the Ranbval control plane;
+there is no client-side flag to bypass either.
+
+**Network requirement:** because the allowlist is verified server-side on every decrypt,
+resolving a vault token requires connectivity to the Ranbval control plane — the same as any
+cloud secret manager (HashiCorp Vault, Doppler, AWS/GCP Secrets Manager). Plain (non-`ranbval.*`)
+values in your `.ranbval` files resolve fully offline.
 
 ---
 

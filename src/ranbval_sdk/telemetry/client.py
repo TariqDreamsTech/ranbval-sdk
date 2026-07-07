@@ -8,12 +8,15 @@ worker thread for asyncio/FastAPI. Only a non-reversible token salt is sent — 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import socket
 import sys
 import threading
+import time
 import urllib.request
+import uuid
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -36,6 +39,47 @@ def _get_git_branch() -> str | None:
         ).strip()
     except Exception:
         return None
+
+
+def _get_git_email() -> str | None:
+    """Developer identity from ``git config user.email`` (who ran this), if available."""
+    try:
+        import subprocess
+
+        return (
+            subprocess.check_output(
+                ["git", "config", "user.email"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            or None
+        )
+    except Exception:
+        return None
+
+
+def _timezone() -> str:
+    """Coarse geo hint from the local timezone (no network). Precise geo is derived server-side."""
+    try:
+        return time.tzname[0] or ""
+    except Exception:
+        return ""
+
+
+_DEVICE_ID: Optional[str] = None
+
+
+def _device_id() -> str:
+    """Stable, hashed device fingerprint (from the MAC) so the control plane can detect the same
+    credential being used from multiple distinct devices — the core signal for leak detection.
+    The raw MAC is never sent; only a truncated SHA-256."""
+    global _DEVICE_ID
+    if _DEVICE_ID is None:
+        try:
+            _DEVICE_ID = hashlib.sha256(str(uuid.getnode()).encode()).hexdigest()[:16]
+        except Exception:
+            _DEVICE_ID = ""
+    return _DEVICE_ID
 
 
 def _sdk_version() -> str:
@@ -66,6 +110,8 @@ def emit_telemetry(
     completion_tokens: int = 0,
     host_url: Optional[str] = None,
     event_kind: str = "custom.request",
+    item_count: int = 1,
+    roundtrip_ms: Optional[float] = None,
     background: bool = False,
 ) -> None:
     """
@@ -80,10 +126,8 @@ def emit_telemetry(
     """
 
     def _post() -> None:
-        off = (os.environ.get("RANBVAL_TELEMETRY") or "").strip().lower()
-        if off in ("0", "false", "off", "no"):
-            return
-
+        # Telemetry is mandatory — usage is always reported to the Live Monitor.
+        # (There is no local opt-out; the control plane owns retention & policy.)
         salt = client_salt
         if not salt and vault_token_env:
             raw = os.environ.get(str(vault_token_env).strip(), "")
@@ -120,8 +164,13 @@ def emit_telemetry(
             "transport": transport,
             "vault_token_format": "ranbval",
             "git_branch": _get_git_branch(),
+            "git_email": _get_git_email(),  # developer identity
+            "timezone": _timezone(),  # coarse geo hint (precise geo derived server-side from IP)
+            "device_id": _device_id(),  # hashed device fingerprint → multi-device leak detection
             "ci_environment": bool(ci_environment),
         }
+        if roundtrip_ms is not None:
+            sec["roundtrip_ms"] = round(float(roundtrip_ms), 2)  # decrypt latency
 
         payload = {
             "client_salt": salt,
@@ -131,6 +180,9 @@ def emit_telemetry(
             "model_used": model_used,
             "prompt_tokens": int(prompt_tokens),
             "completion_tokens": int(completion_tokens),
+            # Adaptive-sampling weight: this event represents `item_count` actual uses.
+            # The control plane multiplies by this to reconstruct true totals.
+            "item_count": max(1, int(item_count)),
             "security": sec,
         }
 
