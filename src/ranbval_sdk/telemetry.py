@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import functools
+import inspect
 import json
 import os
 import socket
 import sys
 import threading
-from typing import Optional
+from typing import Any, Callable, Iterator, Optional
 from urllib.parse import urlparse
 import urllib.request
 
@@ -133,3 +137,105 @@ def emit_telemetry(
         threading.Thread(target=_post, daemon=True).start()
     else:
         _post()
+
+
+# ---------------------------------------------------------------------------
+# High-level, ergonomic telemetry
+#
+# Wrap a call site once and let usage be reported automatically — no manual
+# emit_telemetry() after every request.
+# ---------------------------------------------------------------------------
+
+
+def track(
+    *,
+    client_salt: Optional[str] = None,
+    vault_token_env: Optional[str] = None,
+    model_used: str = "custom.request",
+    event_kind: str = "custom.request",
+    host_url: Optional[str] = None,
+    background: bool = True,
+) -> Callable:
+    """Decorator: emit telemetry automatically after the wrapped call returns.
+
+    ::
+
+        @track(vault_token_env="OPENAI_API_KEY", model_used="gpt-4o")
+        def ask(prompt): ...
+
+    Fire-and-forget by default (``background=True``). Works on sync **and** async
+    functions; telemetry is skipped silently if no salt can be resolved.
+    """
+
+    def _emit() -> None:
+        emit_telemetry(
+            client_salt=client_salt,
+            vault_token_env=vault_token_env,
+            model_used=model_used,
+            event_kind=event_kind,
+            host_url=host_url,
+            background=background,
+        )
+
+    def decorator(fn: Callable) -> Callable:
+        if inspect.iscoroutinefunction(fn):
+
+            @functools.wraps(fn)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                result = await fn(*args, **kwargs)
+                _emit()
+                return result
+
+            return async_wrapper
+
+        @functools.wraps(fn)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            result = fn(*args, **kwargs)
+            _emit()
+            return result
+
+        return wrapper
+
+    return decorator
+
+
+@contextlib.contextmanager
+def tracked(
+    *,
+    client_salt: Optional[str] = None,
+    vault_token_env: Optional[str] = None,
+    model_used: str = "custom.request",
+    event_kind: str = "custom.request",
+    host_url: Optional[str] = None,
+    background: bool = True,
+) -> Iterator[None]:
+    """Context manager: emit telemetry once when the block exits.
+
+    ::
+
+        with tracked(vault_token_env="OPENAI_API_KEY"):
+            client.chat.completions.create(...)
+    """
+    try:
+        yield
+    finally:
+        emit_telemetry(
+            client_salt=client_salt,
+            vault_token_env=vault_token_env,
+            model_used=model_used,
+            event_kind=event_kind,
+            host_url=host_url,
+            background=background,
+        )
+
+
+async def aemit_telemetry(**kwargs: Any) -> None:
+    """Async, non-blocking telemetry for event loops (FastAPI, asyncio).
+
+    Same arguments as :func:`emit_telemetry`, but the blocking POST runs on a worker
+    thread via ``asyncio.to_thread`` so the event loop is never stalled::
+
+        await aemit_telemetry(vault_token_env="OPENAI_API_KEY", model_used="gpt-4o")
+    """
+    kwargs.setdefault("background", False)
+    await asyncio.to_thread(emit_telemetry, **kwargs)
