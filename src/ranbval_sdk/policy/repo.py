@@ -8,6 +8,8 @@ The check is server-controlled and cannot be skipped on the client.
 from __future__ import annotations
 
 import json
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,6 +17,14 @@ from urllib.parse import urlparse
 
 from ranbval_sdk._internal import transport
 from ranbval_sdk.exceptions import RepoNotAllowedError, RepoPolicyError
+
+# Short-lived, in-process cache of the repo policy keyed by (host, client_salt). A hot
+# decrypt loop would otherwise make one blocking HTTP round-trip per call; caching bounds
+# that to one fetch per credential per TTL while still re-checking regularly. Kept short so
+# dashboard allowlist changes take effect quickly.
+_POLICY_TTL_SEC = 60.0
+_policy_cache: dict[tuple[str, str], tuple[float, dict]] = {}
+_policy_lock = threading.Lock()
 
 
 def normalize_git_remote_url(url: str | None) -> str | None:
@@ -73,7 +83,7 @@ def _origin_allowed(origin: str, allowed: list[str]) -> bool:
     return g in norms
 
 
-def fetch_repo_policy(ranbval_host: str, client_salt: str) -> dict:
+def _fetch_repo_policy_uncached(ranbval_host: str, client_salt: str) -> dict:
     base = ranbval_host.rstrip("/")
     qs = urllib.parse.urlencode({"client_salt": client_salt})
     url = f"{base}/api/public/repo-policy?{qs}"
@@ -82,6 +92,26 @@ def fetch_repo_policy(ranbval_host: str, client_salt: str) -> dict:
     )
     with transport.urlopen(req, timeout=12) as resp:
         return json.loads(resp.read().decode("utf-8"))
+
+
+def fetch_repo_policy(ranbval_host: str, client_salt: str) -> dict:
+    """Fetch (and briefly cache) the project's repo policy for ``client_salt``.
+
+    Results are cached per ``(host, salt)`` for ``_POLICY_TTL_SEC`` so repeated decrypts of
+    the same credential don't each pay a network round-trip. Errors are never cached.
+    """
+    cache_key = (ranbval_host.rstrip("/"), client_salt)
+    now = time.time()
+    with _policy_lock:
+        hit = _policy_cache.get(cache_key)
+        if hit is not None and (now - hit[0]) < _POLICY_TTL_SEC:
+            return hit[1]
+
+    policy = _fetch_repo_policy_uncached(ranbval_host, client_salt)
+
+    with _policy_lock:
+        _policy_cache[cache_key] = (time.time(), policy)
+    return policy
 
 
 def assert_repo_allowed_for_decrypt(ranbval_host: str, client_salt: str) -> None:

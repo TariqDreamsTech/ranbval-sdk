@@ -4,6 +4,53 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [1.4.0] - 2026-07-08
+
+Hardening, privacy, and maintainability pass. **No breaking public-API changes** — every
+`from ranbval_sdk import …` still works. One documented behaviour is now correct:
+`build_secure_client(..., env_var=..., key_kwarg=...)` matches the README (the parameters were
+previously named `env_var_name` and only worked positionally).
+
+### Added
+- **`[public]` / `[secrets]` sections** in `.ranbval` — declare unencrypted config
+  (`DATABASE_URL`, `CORS_ORIGINS`, `PORT`, …) separately from encrypted vault tokens. New
+  `public(name)` / `public_config()` / `is_public(name)` accessors return plaintext only and
+  refuse to hand back a declared secret or a `ranbval.*` token. The same guarded access is
+  available on the `Vault` / `env` object as `env.public(name)` / `env.public_config()`, so a
+  secret can never be read through a public path on any access surface. `load_ranbval()` warns
+  when a value contradicts its section. Fully backward compatible — sections are optional and
+  flat files behave exactly as before. New `config/manifest.py`.
+- **Telemetry privacy switches** — `RANBVAL_TELEMETRY_DISABLED=1` turns off all usage
+  reporting; `RANBVAL_TELEMETRY_IDENTITY=1` opts in to sending `git config user.email`
+  (now **off by default** — PII is not collected unless enabled). New `telemetry/settings.py`.
+- **Structured errors** — `RanbvalError` now carries a machine-readable `.code` and a
+  `.context` dict for logging/metrics without parsing message strings.
+- **Repo-policy caching** — the per-decrypt allowlist fetch is cached per `(host, salt)` for
+  60s, so hot decrypt loops no longer make one blocking HTTP round-trip per call.
+
+### Changed
+- **Pure-Python packaging** — removed the stale Cython build hook (`build.py`) and the
+  `Cython`/`setuptools` build requirements. The SDK ships as a universal wheel + sdist that
+  installs on any platform (previously only a macOS-arm64 wheel built, and it referenced a
+  `crypto.py` that no longer exists). Obfuscation was never a security control.
+- **`load_ranbval()` no longer patches global builtins by default** — the `print` /
+  `sys.stdout.write` output guards are now opt-in via `load_ranbval(guard_stdout=True)`.
+  `SecretString` still masks itself via `__str__`/`__repr__`. Removed the fragile
+  frame-inspection f-string detection.
+- **Honest crypto errors** — replaced pseudo-technical messages ("packet fragmentation",
+  "signature matrix") and the hard-coded `"ahsan"` label check with clear, actionable
+  messages. The token `<label>` is now treated as an opaque tag (so labels like `stripe`
+  work), and token parsing/TTL handling is factored into small tested helpers.
+- **Auto-patched SDK telemetry** now flows through the same adaptive sampler as
+  `decrypt_key()` instead of spawning a thread + POST on every call.
+- **Deprecation via `warnings.warn`** — `RANBVAL_VAULT_SECRET` deprecation uses
+  `DeprecationWarning` instead of printing to stderr.
+- **Consistent style** — modern `X | None` type hints, sorted imports, and `ruff` + `mypy`
+  configuration added to `pyproject.toml`. `MissingKeyError` no longer double-quotes its
+  message (the classic `KeyError.__str__` gotcha).
+
+---
+
 ## [1.3.0] - 2026-07-08
 
 Internal reorganization for a stricter separation of concerns — **gather → shape → send**,

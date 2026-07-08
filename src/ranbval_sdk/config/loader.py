@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import os
 import re
+import warnings
 from pathlib import Path
 
+from ranbval_sdk.config import manifest
 from ranbval_sdk.exceptions import RanbvalConfigError
 
 
@@ -41,16 +43,41 @@ def _strip_inline_comment(value: str) -> str:
         elif ch == '"' and not in_single:
             in_double = not in_double
         elif ch == "#" and not in_single and not in_double:
-            return v[:i].strip().rstrip()
+            return v[:i].strip()
     return v
 
 
-def _parse_ranbval_file(path: Path) -> dict[str, str]:
+_SECTION_RE = re.compile(r"^\[\s*(?P<name>[A-Za-z0-9_-]+)\s*\]$")
+
+
+def _section_kind(header: str) -> str | None:
+    """Map a ``[section]`` header to ``"public"`` / ``"secret"``, or ``None`` if unrecognised."""
+    name = header.lower()
+    if name in manifest.PUBLIC_SECTIONS:
+        return "public"
+    if name in manifest.SECRET_SECTIONS:
+        return "secret"
+    return None  # unknown header — keys under it stay unlabelled (auto-detect)
+
+
+def _parse_ranbval_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """Parse one ``.ranbval`` file into ``(values, kinds)``.
+
+    ``values`` is ``name -> value``; ``kinds`` is ``name -> "public"|"secret"`` for keys that
+    appear under a recognised ``[public]`` / ``[secret]`` section. Keys before any section (or
+    under an unknown header) are omitted from ``kinds`` so they keep the auto-detect behaviour.
+    """
     out: dict[str, str] = {}
+    kinds: dict[str, str] = {}
+    section: str | None = None
     with open(path, encoding="utf-8-sig") as f:
         for raw_line in f:
             line = raw_line.strip()
             if not line or line.startswith("#"):
+                continue
+            header = _SECTION_RE.match(line)
+            if header:
+                section = _section_kind(header.group("name"))
                 continue
             if line.lower().startswith("export "):
                 line = line[7:].strip()
@@ -64,7 +91,9 @@ def _parse_ranbval_file(path: Path) -> dict[str, str]:
             if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
                 value = value[1:-1]
             out[key] = value
-    return out
+            if section is not None:
+                kinds[key] = section
+    return out, kinds
 
 
 def _layer_paths(directory: Path, mode: str) -> list[Path]:
@@ -118,6 +147,25 @@ def _normalize_project_name(name: str) -> str:
     return re.sub(r"[^A-Z0-9]", "_", name.upper().strip()).strip("_")
 
 
+def _warn_declaration_mismatches(values: dict[str, str], kinds: dict[str, str]) -> None:
+    """Warn when a value contradicts its declared section (helps catch copy/paste mistakes)."""
+    for key, kind in kinds.items():
+        value = values.get(key, "")
+        if kind == "public" and value.startswith("ranbval."):
+            warnings.warn(
+                f"{key!r} is declared under [public] but its value is an encrypted "
+                "vault token. Public keys are meant to be plaintext — move it to [secrets].",
+                stacklevel=3,
+            )
+        elif kind == "secret" and value and not value.startswith("ranbval."):
+            warnings.warn(
+                f"{key!r} is declared under [secrets] but its value is plaintext "
+                "(not a 'ranbval.*' token), so it will not be decrypted. "
+                "Move it to [public] or replace it with a vault token.",
+                stacklevel=3,
+            )
+
+
 def load_ranbval(
     path: str | None = None,
     *,
@@ -126,6 +174,7 @@ def load_ranbval(
     override: bool = False,
     project_secret: str | None = None,
     project_name: str | None = None,
+    guard_stdout: bool = False,
 ) -> bool:
     """
     Load ``KEY=value`` pairs into ``os.environ``.
@@ -162,13 +211,21 @@ def load_ranbval(
       If a token's env-var prefix does not match the loaded project name, ``get_project_key``
       will raise ``ValueError`` so cross-project key mix-ups are caught at load time.
 
+    **Hardening** (optional):
+
+    - ``guard_stdout=False`` (default): no global patching. Secrets still mask themselves
+      via ``SecretString.__str__``/``__repr__``.
+    - ``guard_stdout=True``: patch ``builtins.print`` / ``sys.stdout.write`` so passing a
+      revealed secret straight to them raises ``PermissionError``. Opt-in because it mutates
+      global builtins and can surprise other libraries / test capture.
+
     Returns True if at least one file was read.
     """
     if path:
         p = Path(path)
         if not p.is_file():
             return False
-        merged = _parse_ranbval_file(p)
+        merged, merged_kinds = _parse_ranbval_file(p)
     else:
         root = find_ranbval_directory(start)
         if not root:
@@ -178,8 +235,15 @@ def load_ranbval(
         if not layers:
             return False
         merged = {}
+        merged_kinds = {}
         for layer_path in layers:
-            merged.update(_parse_ranbval_file(layer_path))
+            values, kinds = _parse_ranbval_file(layer_path)
+            merged.update(values)
+            merged_kinds.update(kinds)
+
+    # Record [public]/[secret] declarations and flag values that contradict them.
+    manifest.record(merged_kinds)
+    _warn_declaration_mismatches(merged, merged_kinds)
 
     for key, value in merged.items():
         if override or key not in os.environ or os.environ.get(key, "") == "":
@@ -206,11 +270,13 @@ def load_ranbval(
         if key.endswith("_PROJECT_SECRET") and os.environ.get(key):
             _store_project_secret(key, os.environ[key])
 
-    # Patch builtins.print and sys.stdout.write to raise if a protected secret
-    # value is passed directly — prevents accidental plaintext output.
-    from ranbval_sdk.crypto.secret_string import install_output_guards
+    # Optional, opt-in hardening: patch builtins.print / sys.stdout.write to raise if a
+    # protected secret is passed directly. Off by default because patching global builtins
+    # is invasive; SecretString already masks itself via __str__/__repr__ without it.
+    if guard_stdout:
+        from ranbval_sdk.crypto.secret_string import install_output_guards
 
-    install_output_guards()
+        install_output_guards()
 
     return True
 

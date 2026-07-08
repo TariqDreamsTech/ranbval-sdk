@@ -14,15 +14,19 @@ import functools
 import inspect
 import os
 import threading
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Any, Callable, Iterator, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from ranbval_sdk.config.loader import load_ranbval
 from ranbval_sdk.crypto.secret_string import SecretString
-from ranbval_sdk.exceptions import MissingKeyError
+from ranbval_sdk.exceptions import MissingKeyError, RanbvalConfigError
 
 _loaded_modes: set[str] = set()
 _load_lock = threading.Lock()
+
+#: Sentinel so ``public(name)`` can tell "no default given" apart from ``default=None``.
+_UNSET = object()
 
 
 def _is_token(value: str | None) -> bool:
@@ -125,6 +129,24 @@ class Vault:
     def __iter__(self) -> Iterator[str]:
         self._ensure_loaded()
         return iter(os.environ)
+
+    # -- public (unencrypted) access ---------------------------------------
+    def public(self, name: str, default: Any = _UNSET) -> str:
+        """Return a **plaintext** config value the public way — same policy as :func:`public`.
+
+        A key declared ``[secrets]`` (or any ``ranbval.*`` token) is refused, so a secret can
+        never be read through this public path::
+
+            env.public("DATABASE_URL")     # -> plain str
+            env.public("OPENAI_API_KEY")   # -> RanbvalConfigError (it's a secret)
+        """
+        self._ensure_loaded()
+        return _lookup_public(name, default)
+
+    def public_config(self) -> dict[str, str]:
+        """Every ``[public]``-declared key as ``{name: plaintext}`` (secrets never included)."""
+        self._ensure_loaded()
+        return _lookup_public_config()
 
     # -- ergonomic helpers --------------------------------------------------
     def reveal(self, name: str) -> str:
@@ -246,6 +268,98 @@ def iter_secrets(*, mode: str | None = None) -> Iterator[tuple[str, SecretString
     for name, raw in os.environ.items():
         if _is_token(raw):
             yield name, decrypt_key(name)
+
+
+# -- public (unencrypted) configuration --------------------------------------
+def _lookup_public(name: str, default: Any) -> str:
+    """The single place that enforces the public-access policy (env assumed loaded).
+
+    A key declared ``[secrets]`` — or any ``ranbval.*`` token value — is **never** returned
+    here; both raise. This is what guarantees a secret can never leak through a public path,
+    no matter which surface (function or ``Vault`` method) the caller used.
+    """
+    from ranbval_sdk.config import manifest
+
+    if manifest.is_secret(name):
+        raise RanbvalConfigError(
+            f"{name!r} is declared under [secrets]; use decrypt_key({name!r}) instead. "
+            "public() only returns plaintext configuration.",
+            code="not_a_public_key",
+        )
+
+    raw = os.environ.get(name)
+    if raw is None:
+        if default is not _UNSET:
+            return default
+        raise MissingKeyError(
+            f"{name!r} is not set — did you create it in your .ranbval file?"
+        )
+    if _is_token(raw):
+        raise RanbvalConfigError(
+            f"{name!r} holds an encrypted vault token, not a plaintext value. "
+            f"Use decrypt_key({name!r}) to decrypt it.",
+            code="not_a_public_key",
+        )
+    return raw
+
+
+def _lookup_public_config() -> dict[str, str]:
+    """Collect all ``[public]``-declared plaintext values (env assumed loaded)."""
+    from ranbval_sdk.config import manifest
+
+    out: dict[str, str] = {}
+    for name in manifest.public_names():
+        raw = os.environ.get(name)
+        if raw is not None and not _is_token(raw):
+            out[name] = raw
+    return out
+
+
+def public(name: str, default: Any = _UNSET, *, mode: str | None = None) -> str:
+    """Return a **plaintext** config value — never decrypts, never a :class:`SecretString`.
+
+    For values you intentionally keep unencrypted (``DATABASE_URL``, ``CORS_ORIGINS``,
+    ``PORT``, …). Declare them under a ``[public]`` section in ``.ranbval`` to make the
+    intent explicit::
+
+        # .ranbval
+        [public]
+        DATABASE_URL=postgresql://localhost/mydb
+        CORS_ORIGINS=https://a.com,https://b.com
+
+        # app.py
+        from ranbval_sdk import public
+        db = public("DATABASE_URL")          # -> plain str
+
+    Safety rails:
+
+    - If the key was declared under ``[secrets]``, this raises — use ``decrypt_key`` for it.
+    - If the value looks like an encrypted ``ranbval.*`` token, this raises rather than
+      handing back ciphertext (you almost certainly meant :func:`~ranbval_sdk.decrypt_key`).
+
+    ``default`` is returned when the key is absent (otherwise :class:`MissingKeyError`).
+    """
+    _ensure_env_loaded(mode)
+    return _lookup_public(name, default)
+
+
+def public_config(*, mode: str | None = None) -> dict[str, str]:
+    """Return every key declared under ``[public]`` as a ``{name: plaintext}`` dict.
+
+    ::
+
+        cfg = public_config()
+        app.add_middleware(CORSMiddleware, allow_origins=cfg["CORS_ORIGINS"].split(","))
+    """
+    _ensure_env_loaded(mode)
+    return _lookup_public_config()
+
+
+def is_public(name: str) -> bool:
+    """True when *name* was declared under a ``[public]`` section in ``.ranbval``."""
+    from ranbval_sdk.config import manifest
+
+    return manifest.is_public(name)
 
 
 # The declarative, class-based API (``Secret`` / ``SecretConfig``) lives in

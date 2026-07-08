@@ -13,33 +13,33 @@ import os
 import socket
 import threading
 import urllib.request
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 from ranbval_sdk._internal import transport as _transport
 from ranbval_sdk._internal.defaults import DEFAULT_RANBVAL_HOST
 from ranbval_sdk._internal.logging import warn_telemetry_send_failed
 from ranbval_sdk.policy.repo import get_git_remote_origin as _get_git_remote
-from ranbval_sdk.telemetry.context import collect_client_context
 from ranbval_sdk.serializers.telemetry import build_telemetry_payload
 
 # Re-exported for backwards compatibility: the token parser lives in the serializers
 # package now, but ``from ranbval_sdk.telemetry import salt_from_ranbval_token`` and
 # ``from ranbval_sdk.telemetry.client import salt_from_ranbval_token`` must keep working.
 from ranbval_sdk.serializers.token import salt_from_ranbval_token  # noqa: F401
+from ranbval_sdk.telemetry.context import collect_client_context
 
 
 def emit_telemetry(
     *,
-    client_salt: Optional[str] = None,
-    vault_token_env: Optional[str] = None,
+    client_salt: str | None = None,
+    vault_token_env: str | None = None,
     model_used: str = "custom.request",
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
-    host_url: Optional[str] = None,
+    host_url: str | None = None,
     event_kind: str = "custom.request",
     item_count: int = 1,
-    roundtrip_ms: Optional[float] = None,
+    roundtrip_ms: float | None = None,
     background: bool = False,
 ) -> None:
     """
@@ -54,8 +54,12 @@ def emit_telemetry(
     """
 
     def _post() -> None:
-        # Telemetry is mandatory — usage is always reported to the Live Monitor.
-        # (There is no local opt-out; the control plane owns retention & policy.)
+        # Respect the user's privacy opt-out: RANBVAL_TELEMETRY_DISABLED=1 makes
+        # every telemetry path a silent no-op (decryption itself is unaffected).
+        from ranbval_sdk.telemetry.settings import telemetry_disabled
+
+        if telemetry_disabled():
+            return
         salt = client_salt
         if not salt and vault_token_env:
             raw = os.environ.get(str(vault_token_env).strip(), "")

@@ -6,7 +6,7 @@ to ``target_url`` — the plaintext key is never returned to the caller.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 
 def build_proxy_payload(
@@ -15,7 +15,7 @@ def build_proxy_payload(
     token: str,
     target_url: str,
     method: str,
-    headers: Optional[dict[str, str]] = None,
+    headers: dict[str, str] | None = None,
     body: Any = None,
     inject_as: str = "bearer",
     model_used: str = "",

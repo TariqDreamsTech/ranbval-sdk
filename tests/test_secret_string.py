@@ -34,7 +34,7 @@ class TestLeakBlocking(unittest.TestCase):
         self.assertEqual(self.s.use(), "top-secret-value")
 
     def test_length_safe(self):
-        self.assertEqual(len(self.s), len("top-secret-value".encode()))
+        self.assertEqual(len(self.s), len(b"top-secret-value"))
 
     def test_label_default(self):
         self.assertEqual(self.s.label, "secret")

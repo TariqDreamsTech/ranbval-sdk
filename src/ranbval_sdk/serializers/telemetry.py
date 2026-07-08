@@ -8,7 +8,8 @@ in. Only a non-reversible token salt and this metadata are sent — never plaint
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional
+from collections.abc import Mapping
+from typing import Any
 
 
 def build_security_metadata(
@@ -17,7 +18,7 @@ def build_security_metadata(
     event_kind: str,
     transport: str,
     ci_environment: bool,
-    roundtrip_ms: Optional[float] = None,
+    roundtrip_ms: float | None = None,
 ) -> dict[str, Any]:
     """Shape the ``security`` block from a gathered client ``context`` plus per-event fields."""
     sec: dict[str, Any] = {
@@ -43,7 +44,7 @@ def build_telemetry_payload(
     client_salt: str,
     machine_name: str,
     repo_path: str,
-    git_url: Optional[str],
+    git_url: str | None,
     model_used: str,
     prompt_tokens: int,
     completion_tokens: int,
@@ -52,7 +53,7 @@ def build_telemetry_payload(
     event_kind: str,
     transport: str,
     ci_environment: bool,
-    roundtrip_ms: Optional[float] = None,
+    roundtrip_ms: float | None = None,
 ) -> dict[str, Any]:
     """Shape the full ``/api/telemetry`` request body from already-gathered values."""
     return {

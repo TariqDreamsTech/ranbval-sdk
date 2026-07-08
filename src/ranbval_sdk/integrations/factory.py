@@ -5,11 +5,11 @@ Single entry: wrap **your** SDK class (OpenAI, Stripe, Anthropic, …) — Ranbv
 from __future__ import annotations
 
 import os
-from typing import Any, Type
+from typing import Any
 
 
 def secure_client(
-    sdk_class: Type[Any],
+    sdk_class: type[Any],
     *,
     env_var: str,
     key_kwarg: str,

@@ -18,7 +18,7 @@ import contextlib
 import threading
 import time
 import traceback
-from typing import Iterator
+from collections.abc import Iterator
 
 # The record shape lives in the serializers package; re-exported here so
 # ``from ranbval_sdk.crypto.audit import AuditEntry`` keeps working.

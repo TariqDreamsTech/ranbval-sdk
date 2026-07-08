@@ -1,34 +1,65 @@
-[tool.poetry]
+# PEP 621 metadata (modern standard). Poetry 2.x reads this directly; the small
+# [tool.poetry] block below only carries build-time bits that have no PEP 621 field.
+[project]
 name = "ranbval-sdk"
-version = "1.3.0"
+version = "1.4.0"
 description = "Keep API secrets out of plaintext config: layered .ranbval* env files, decrypt vault tokens only when used, with built-in repo-allowlist enforcement and automatic usage telemetry to the Live Monitor—minimal deps, your own HTTP/SDK stack."
-authors = ["Ahsan Tariq", "Hussnain Tariq", "Sundas Tariq","Laiba Saleem"]
+authors = [
+    { name = "Ahsan Tariq" },
+    { name = "Hussnain Tariq" },
+    { name = "Sundas Tariq" },
+    { name = "Laiba Saleem" },
+]
 readme = "README.md"
-build = "build.py"
 license = "MIT"
-include = ["src/ranbval_sdk/py.typed"]
-homepage = "https://www.ranbval.com"
-repository = "https://github.com/TariqDreamsTech/ranbval-sdk"
-documentation = "https://api.ranbval.com/docs"
+requires-python = ">=3.10"
+dependencies = [
+    "cryptography>=42.0.0",
+    "certifi>=2024.0.0",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Topic :: Security",
     "Topic :: Security :: Cryptography",
 ]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-cryptography = "^42.0.0"
-certifi = ">=2024.0.0"
+[project.urls]
+Homepage = "https://www.ranbval.com"
+Repository = "https://github.com/TariqDreamsTech/ranbval-sdk"
+Documentation = "https://api.ranbval.com/docs"
 
+[tool.poetry]
+# src layout: tell the builder where the package lives, and ship the PEP 561 marker.
+packages = [{ include = "ranbval_sdk", from = "src" }]
+include = ["src/ranbval_sdk/py.typed"]
+
+# Pure-Python package: no C compiler, no Cython. Ships one universal wheel + sdist
+# that installs on any platform/interpreter (>=3.10). Obfuscation is not a security
+# control — enforcement lives in the Ranbval control plane, not in a compiled .so.
 [build-system]
-requires = ["poetry-core>=1.0.0", "Cython>=3.0.0", "setuptools"]
+requires = ["poetry-core>=2.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# pyflakes, pycodestyle, isort, pyupgrade, bugbear — enforce modern, consistent style.
+select = ["F", "E", "W", "I", "UP", "B"]
+ignore = ["E501"]  # line length handled by the formatter
+
+[tool.mypy]
+python_version = "3.10"
+packages = ["ranbval_sdk"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true

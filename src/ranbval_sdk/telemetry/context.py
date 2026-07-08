@@ -12,7 +12,7 @@ import hashlib
 import sys
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 
 def _get_git_branch() -> str | None:
@@ -29,7 +29,16 @@ def _get_git_branch() -> str | None:
 
 
 def _get_git_email() -> str | None:
-    """Developer identity from ``git config user.email`` (who ran this), if available."""
+    """Developer identity from ``git config user.email`` (who ran this), if available.
+
+    Privacy: only collected when the user has explicitly opted in via
+    ``RANBVAL_TELEMETRY_IDENTITY=1``. Off by default — returns ``None`` so no
+    personal identifier ever leaves the machine unless enabled.
+    """
+    from ranbval_sdk.telemetry.settings import identity_opt_in
+
+    if not identity_opt_in():
+        return None
     try:
         import subprocess
 
@@ -53,7 +62,7 @@ def _timezone() -> str:
         return ""
 
 
-_DEVICE_ID: Optional[str] = None
+_DEVICE_ID: str | None = None
 
 
 def _device_id() -> str:

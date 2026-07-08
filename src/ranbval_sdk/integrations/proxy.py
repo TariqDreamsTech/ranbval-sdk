@@ -40,8 +40,8 @@ import urllib.request
 from typing import Any
 
 from ranbval_sdk._internal import transport
-from ranbval_sdk.crypto.cipher import _find_project_secret_for
 from ranbval_sdk._internal.defaults import DEFAULT_RANBVAL_HOST
+from ranbval_sdk.crypto.cipher import _find_project_secret_for
 from ranbval_sdk.exceptions import ProxyError
 from ranbval_sdk.serializers.proxy import build_proxy_payload
 

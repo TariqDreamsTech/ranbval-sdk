@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v1.2.0`
+# Ranbval SDK `v1.4.0`
 
 Keep API secrets out of plaintext config. Encrypt them in the Ranbval dashboard, store encrypted tokens in `.ranbval` files, decrypt only at runtime — AES-256-GCM with PBKDF2 key derivation, no plaintext ever touches source control.
 
@@ -60,6 +60,8 @@ OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
 | Symbol | Description |
 |--------|-------------|
 | `load_ranbval()` | Merges layered `.ranbval*` files into `os.environ` |
+| `public()` | Read a plaintext (unencrypted) config value — never decrypts |
+| `public_config()` | Dict of every key declared under `[public]` |
 | `safe_decrypt()` | Decrypts a vault token string → `SecretString` |
 | `decrypt_key()` | Reads an env var and decrypts it in one call |
 | `SecretString` | Wrapper that blocks all display paths — value only via `.use()` |
@@ -369,11 +371,16 @@ emit_telemetry(
 If no `client_salt` can be resolved the call is a silent no-op — safe to call even with plain (non-ranbval) keys.
 
 **What each event sends.** Only a non-reversible token salt (never the plaintext secret) plus operational
-metadata: SDK/Python version and platform, transport scheme, git branch and `git config user.email`
-(developer identity), a coarse `timezone` geo hint, decrypt latency, and a **hashed, non-reversible
-`device_id`** (a truncated SHA-256 of the machine ID — the raw MAC is never sent). The `device_id` is the
-signal the control plane uses for **leak detection**: the same credential appearing on multiple distinct
-devices/IPs raises an alert in the Live Monitor.
+metadata: SDK/Python version and platform, transport scheme, git branch, a coarse `timezone` geo hint,
+decrypt latency, and a **hashed, non-reversible `device_id`** (a truncated SHA-256 of the machine ID —
+the raw MAC is never sent). The `device_id` is the signal the control plane uses for **leak detection**:
+the same credential appearing on multiple distinct devices/IPs raises an alert in the Live Monitor.
+
+**Privacy controls.**
+- `git config user.email` (developer identity) is **not** sent by default. Set `RANBVAL_TELEMETRY_IDENTITY=1`
+  to opt in to attaching it (useful for attributing usage to a person on a shared machine).
+- Set `RANBVAL_TELEMETRY_DISABLED=1` to turn usage reporting **off** entirely — every telemetry path
+  becomes a no-op. Decryption and the repo-allowlist check are unaffected.
 
 ---
 
@@ -428,9 +435,68 @@ assert get_audit_log() == []
 
 ---
 
+## Public vs. Secret Values
+
+Not everything needs encryption. Values like `DATABASE_URL`, `CORS_ORIGINS`, or `PORT` are
+plain config — you *want* them readable and committable. Encrypted vault tokens
+(`OPENAI_API_KEY`, `STRIPE_SECRET_KEY`) are secrets. You can make that split explicit with
+`[public]` and `[secrets]` section headers in `.ranbval`:
+
+```bash
+# .ranbval
+RANBVAL_PROJECT_SECRET=ranbval-proj-xxx     # (or keep in .ranbval.local)
+
+[public]                                     # plaintext — never decrypted
+DATABASE_URL=postgresql://localhost/mydb
+CORS_ORIGINS=https://app.example.com,https://admin.example.com
+PORT=8000
+
+[secrets]                                    # encrypted vault tokens
+OPENAI_API_KEY=ranbval.4ii0a022aa.p1GO...ahsan
+STRIPE_SECRET_KEY=ranbval.7cc2b931ff.xYz...stripe
+```
+
+```python
+from ranbval_sdk import load_ranbval, public, public_config, decrypt_key
+
+load_ranbval()
+
+db      = public("DATABASE_URL")              # -> plain str (never a SecretString)
+origins = public("CORS_ORIGINS").split(",")   # use directly in CORS config
+cfg     = public_config()                     # -> {"DATABASE_URL": ..., "CORS_ORIGINS": ..., "PORT": ...}
+
+api_key = decrypt_key("OPENAI_API_KEY")       # -> SecretString (decrypted on use)
+```
+
+**Rules & safety rails**
+
+- **Fully backward compatible.** Sections are optional. A flat `.ranbval` (no headers) behaves
+  exactly as before — `ranbval.*` values are auto-detected as secrets, everything else is plain.
+- Keys **before any header** (or under an unrecognised header) stay *unlabelled* and keep the
+  auto-detect behaviour.
+- `public()` **refuses** to return a key declared under `[secrets]`, or any value that looks like
+  an encrypted `ranbval.*` token — use `decrypt_key()` for those.
+- `load_ranbval()` emits a `warning` if a `[public]` value is actually an encrypted token, or a
+  `[secrets]` value is plaintext — catching copy/paste mistakes early.
+- Header aliases: `[public]` = `[plain]` / `[plaintext]` / `[config]`; `[secrets]` = `[secret]` /
+  `[vault]` / `[encrypted]`.
+
+The same policy is available on the `Vault` / `env` object, so whichever access style you use,
+a secret can never come out of a public path:
+
+```python
+from ranbval_sdk import env
+
+env.public("DATABASE_URL")     # -> plain str
+env.public("OPENAI_API_KEY")   # -> raises (declared [secrets]) — use env.reveal() / decrypt_key()
+env.public_config()            # -> {name: plaintext} for every [public] key
+```
+
+---
+
 ## `.ranbval` File Format
 
-`.ranbval` files follow the same `KEY=VALUE` format as `.env` files. Lines starting with `#` are comments. Blank lines are ignored.
+`.ranbval` files follow the same `KEY=VALUE` format as `.env` files. Lines starting with `#` are comments. Blank lines are ignored. Optional `[public]` / `[secrets]` section headers group keys (see above).
 
 ```bash
 # Plain value — stored and used as-is
@@ -497,11 +563,13 @@ RANBVAL_PROJECT_SECRET=your_project_secret_from_dashboard
 | `RANBVAL_ENV` | `development` | Active mode for layered config |
 | `RANBVAL_PROJECT_SECRET` | *(required)* | Project secret for `safe_decrypt()` / `decrypt_key()` |
 | `RANBVAL_TELEMETRY_DEBUG` | `0` | `1` = print telemetry errors to stderr |
+| `RANBVAL_TELEMETRY_DISABLED` | `0` | `1` = turn off all usage reporting (decryption still works) |
+| `RANBVAL_TELEMETRY_IDENTITY` | `0` | `1` = opt in to sending `git config user.email` with events |
 
-> Repo-allowlist enforcement and usage telemetry are **always on** and controlled by the
-> Ranbval dashboard — there is no client-side flag to skip either. `decrypt_key()` reports
-> each use to the Live Monitor automatically; call `emit_telemetry()` only when you want to
-> record richer custom events.
+> **Repo-allowlist enforcement** is always on and controlled by the Ranbval dashboard — there is
+> no client-side flag to skip it. **Usage telemetry** is on by default (so leak detection works),
+> but you can turn it off with `RANBVAL_TELEMETRY_DISABLED=1`. `decrypt_key()` reports each use to
+> the Live Monitor automatically; call `emit_telemetry()` only for richer custom events.
 
 ---
 
@@ -560,8 +628,8 @@ Your Code
 
 AES-256-GCM encryption with PBKDF2 key derivation (100,000 iterations). The project secret
 never leaves your environment — the decryption itself happens on your machine. The repo
-allowlist check and usage reporting are always on and governed by the Ranbval control plane;
-there is no client-side flag to bypass either.
+allowlist check is always on and governed by the Ranbval control plane (no client-side bypass).
+Usage reporting is on by default but can be disabled with `RANBVAL_TELEMETRY_DISABLED=1`.
 
 **Network requirement:** because the allowlist is verified server-side on every decrypt,
 resolving a vault token requires connectivity to the Ranbval control plane — the same as any

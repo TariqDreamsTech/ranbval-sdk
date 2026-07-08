@@ -27,7 +27,6 @@ from __future__ import annotations
 import builtins
 import ctypes
 import sys
-import threading
 
 
 def _try_mlock(buf: bytearray) -> bool:
@@ -85,7 +84,7 @@ class _ProtectedStr(str):
 
     __slots__ = ()
 
-    def __new__(cls, value: str) -> "_ProtectedStr":
+    def __new__(cls, value: str) -> _ProtectedStr:
         return str.__new__(cls, value)
 
     def __str__(self) -> str:
@@ -100,15 +99,7 @@ class _ProtectedStr(str):
         # self[:] slices the underlying str buffer, returning a plain str with the
         # real value without going through __str__. format() on that plain str works
         # correctly, so f"Bearer {key}" in SDK code builds the right Authorization header.
-        # print() calls __str__ directly and remains blocked.
-        #
-        # f-string detection: record (frame_id, lineno) in a thread-local so that
-        # _guarded_print can detect print(f"{key.use()}") on the same line.
-        try:
-            f = sys._getframe(1)
-            _format_tls.recent = (id(f), f.f_lineno)
-        except Exception:
-            pass
+        # print(x) (which calls __str__ directly) remains masked.
         return format(self[:], spec)
 
 
@@ -117,7 +108,6 @@ class _ProtectedStr(str):
 _GUARD_INSTALLED = False
 _orig_print = builtins.print
 _orig_stdout_write: object = None
-_format_tls = threading.local()  # tracks the last _ProtectedStr.__format__ call site
 
 _ERR = (
     "Ranbval: cannot output a protected secret. "
@@ -126,23 +116,12 @@ _ERR = (
 
 
 def _guarded_print(*args: object, **kwargs: object) -> None:
-    # Case 1 — direct: print(key.use())  →  arg IS a _ProtectedStr
+    # Guard the accidental leak that actually happens in practice: print(key.use())
+    # or print(x) where x = key.use(). The value is masked by __str__ regardless; this
+    # turns the mistake into a loud PermissionError instead of a silent "[ranbval:secret]".
     for arg in args:
         if isinstance(arg, _ProtectedStr):
             raise PermissionError(_ERR)
-    # Case 2 — f-string: print(f"{key.use()}")
-    # __format__ ran on the same line in the same frame just before print was called.
-    try:
-        f = sys._getframe(1)
-        recent = getattr(_format_tls, "recent", None)
-        if recent and recent == (id(f), f.f_lineno):
-            _format_tls.recent = None
-            raise PermissionError(_ERR)
-    except PermissionError:
-        raise
-    except Exception:
-        pass
-    _format_tls.recent = None
     _orig_print(*args, **kwargs)
 
 
@@ -159,9 +138,13 @@ def install_output_guards() -> None:
     """
     Patch builtins.print and sys.stdout.write so that passing a _ProtectedStr
     (the value returned by SecretString.use()) directly to an output function
-    raises PermissionError instead of leaking the plaintext.
+    raises PermissionError instead of masking the plaintext.
 
-    Called automatically by load_ranbval(). Safe to call multiple times.
+    **Opt-in.** Patching global builtins is invasive and can surprise other libraries,
+    test capture, and REPLs, so ``load_ranbval()`` no longer installs these guards
+    automatically — call ``load_ranbval(guard_stdout=True)`` (or this function directly)
+    when you want them. ``SecretString``/``_ProtectedStr`` already mask themselves via
+    ``__str__``/``__repr__`` without any global patching. Safe to call multiple times.
     """
     global _GUARD_INSTALLED, _orig_stdout_write
     if _GUARD_INSTALLED:
@@ -198,7 +181,7 @@ class SecretString:
 
     # ── Context manager — wipes automatically on block exit ───────────────
 
-    def __enter__(self) -> "_ProtectedStr":
+    def __enter__(self) -> _ProtectedStr:
         return self.use()
 
     def __exit__(self, *_: object) -> None:
@@ -238,7 +221,7 @@ class SecretString:
 
     # ── Only explicit access point ─────────────────────────────────────────
 
-    def use(self) -> "_ProtectedStr":
+    def use(self) -> _ProtectedStr:
         """
         Return the secret value for use in API calls, headers, etc.
 

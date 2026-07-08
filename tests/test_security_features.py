@@ -1,18 +1,17 @@
 """Tests for mlock, audit log, and Token TTL security features."""
 
-import time
 import threading
+import time
 import unittest
 
 from ranbval_sdk import SecretString
+from ranbval_sdk.crypto import cipher as _cipher
 from ranbval_sdk.crypto import (
     clear_audit_log,
     derive_key,
     get_audit_log,
-    record_access,
     safe_decrypt,
 )
-from ranbval_sdk.crypto import cipher as _cipher
 from ranbval_sdk.crypto.secret_string import _try_mlock
 
 # Repo-allowlist enforcement now always contacts the control plane (no local skip).
@@ -25,7 +24,9 @@ _cipher.assert_repo_allowed_for_decrypt = lambda *args, **kwargs: None
 
 def _build_token(plaintext: str, project_secret: str, expiry_ts: int | None = None) -> str:
     """Build a vault token; optionally embed TTL."""
-    import base64, os as _os
+    import base64
+    import os as _os
+
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
     salt = "testsalt10"

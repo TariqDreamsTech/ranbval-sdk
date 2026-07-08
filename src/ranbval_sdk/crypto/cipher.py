@@ -6,19 +6,26 @@ into a sealed :class:`~ranbval_sdk.crypto.secret_string.SecretString`. Also reso
 project secret for an env var by prefix convention and keeps secrets out of ``os.environ``.
 """
 
+from __future__ import annotations
+
 import base64
-import hmac
 import os
 import time
+from dataclasses import dataclass
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from ranbval_sdk.crypto.secret_string import SecretString
 from ranbval_sdk._internal.defaults import DEFAULT_RANBVAL_HOST
+from ranbval_sdk.crypto.secret_string import SecretString
 from ranbval_sdk.exceptions import RanbvalConfigError, RanbvalDecryptError
 from ranbval_sdk.policy.repo import assert_repo_allowed_for_decrypt
+
+# Fixed marker that prefixes every vault token: ``ranbval.<salt>.<blob>.<label>``.
+# It identifies the wire format — it is public and carries no security by itself
+# (integrity comes from AES-256-GCM, not from this marker).
+_TOKEN_MARKER = "ranbval"
 
 # PBKDF2-HMAC-SHA256 work factor. This value is part of the key derivation and is
 # NOT encoded in the token, so it MUST stay in lock-step with the Ranbval control
@@ -63,6 +70,61 @@ def _enforce_repo_allowlist_if_configured(client_salt: str) -> None:
     assert_repo_allowed_for_decrypt(host, client_salt)
 
 
+@dataclass(frozen=True)
+class _ParsedToken:
+    """The decrypt-relevant parts of a vault token: the credential salt and the ciphertext blob."""
+
+    salt: str
+    blob: str
+
+
+def _parse_token(token: str) -> _ParsedToken:
+    """Split ``ranbval.<salt>.<blob>.<label>`` into its parts.
+
+    The trailing ``<label>`` is an opaque, human-readable tag (e.g. ``ahsan``, ``stripe``);
+    it is not validated because it carries no cryptographic meaning. The 5-part form is the
+    legacy layout kept for backward compatibility. Any other shape is a format error.
+    """
+    parts = token.split(".")
+    if parts[0] != _TOKEN_MARKER:
+        raise RanbvalDecryptError(
+            "Invalid token: not a Ranbval vault token "
+            "(expected it to start with 'ranbval.').",
+            code="invalid_token_format",
+        )
+    if len(parts) == 4:  # ranbval.<salt>.<blob>.<label>
+        return _ParsedToken(salt=parts[1], blob=parts[2])
+    if len(parts) == 5:  # legacy: ranbval.<noise>.<salt>.<blob>.<label>
+        return _ParsedToken(salt=parts[2], blob=parts[3])
+    raise RanbvalDecryptError(
+        f"Invalid token format: expected 'ranbval.<salt>.<blob>.<label>', "
+        f"got {len(parts)} dot-separated segments.",
+        code="invalid_token_format",
+    )
+
+
+def _strip_expiry_and_check_ttl(plaintext: str) -> str:
+    """Enforce an optional TTL line and return the secret body.
+
+    Layout: ``"<secret>\\nranbval-expiry:<unix_ts>"``. Tokens without the line are
+    returned unchanged (backward compatible); a malformed expiry line is treated as
+    "no TTL" rather than a hard failure.
+    """
+    if "\nranbval-expiry:" not in plaintext:
+        return plaintext
+    body, _, expiry_line = plaintext.rpartition("\nranbval-expiry:")
+    try:
+        expiry_ts = int(expiry_line.strip())
+    except ValueError:
+        return body  # malformed expiry — safe fallback: ignore the TTL
+    if time.time() > expiry_ts:
+        raise RanbvalDecryptError(
+            "Vault token has expired. Generate a new one from the Ranbval dashboard.",
+            code="token_expired",
+        )
+    return body
+
+
 def safe_decrypt(copy_token: str, project_secret: str) -> SecretString:
     """
     Decrypt a Ranbval vault token using your project secret.
@@ -76,79 +138,28 @@ def safe_decrypt(copy_token: str, project_secret: str) -> SecretString:
         secret = safe_decrypt(token, project_secret)
         client = openai.OpenAI(api_key=secret.use())   # ← only access point
     """
-    packet_segments = copy_token.split(".")
+    parsed = _parse_token(copy_token)
 
-    # FORMAT: ranbval . noise10 . blob . ahsan (4 parts)
-    if len(packet_segments) != 4:
-        # Compatibility: old 5-part format
-        if len(packet_segments) == 5:
-            header, noise, salt, blob, tail = packet_segments
-            if not hmac.compare_digest(header, "ranbval"):
-                raise RanbvalDecryptError(
-                    "Corrupted cryptographic token identifier or signature matrix"
-                )
-            _enforce_repo_allowlist_if_configured(noise)
-            key = derive_key(project_secret, salt)
-            b64_payload = blob
-        else:
-            raise RanbvalDecryptError(
-                f"E2E packet fragmentation error: expected 4 segments, got {len(packet_segments)}"
-            )
-    else:
-        header = packet_segments[0]
-        noise_salt = packet_segments[1]
-        b64_payload = packet_segments[2]
-        tail_sig = packet_segments[3]
+    # Provenance gate (server-controlled) runs before any crypto work.
+    _enforce_repo_allowlist_if_configured(parsed.salt)
 
-        if not hmac.compare_digest(header, "ranbval") or not hmac.compare_digest(
-            tail_sig, "ahsan"
-        ):
-            raise RanbvalDecryptError(
-                "Corrupted cryptographic token identifier or signature matrix"
-            )
-
-        _enforce_repo_allowlist_if_configured(noise_salt)
-        key = derive_key(project_secret, noise_salt)
-
-    # 2. Decode payload (IV + Ciphertext)
+    key = derive_key(project_secret, parsed.salt)
     try:
-        # Add padding if needed
-        pad = "=" * (-len(b64_payload) % 4)
-        # Use urlsafe_b64decode to handle tokens containing '-' and '_'
-        packed = base64.urlsafe_b64decode(b64_payload + pad)
-        iv = packed[:12]
-        ciphertext = packed[12:]
-
-        # 3. Decrypt payload
-        aesgcm = AESGCM(key)
-        decrypted = aesgcm.decrypt(iv, ciphertext, None)
-        plaintext = decrypted.decode("utf-8")
-
-        # TTL check — format: "actual_secret\nranbval-expiry:1234567890"
-        # Backward compatible: old tokens without expiry line work unchanged.
-        if "\nranbval-expiry:" in plaintext:
-            body, _, expiry_line = plaintext.rpartition("\nranbval-expiry:")
-            try:
-                expiry_ts = int(expiry_line.strip())
-                if time.time() > expiry_ts:
-                    raise RanbvalDecryptError(
-                        "Vault token has expired. "
-                        "Generate a new one from the Ranbval dashboard."
-                    )
-            except ValueError as ttl_err:
-                if "expired" in str(ttl_err):
-                    raise
-                # Malformed expiry line — treat as no TTL (safe fallback)
-                body = plaintext
-            plaintext = body
-
-        return SecretString(plaintext)
-    except (ValueError, KeyError):
+        pad = "=" * (-len(parsed.blob) % 4)  # restore base64url padding if trimmed
+        packed = base64.urlsafe_b64decode(parsed.blob + pad)
+        iv, ciphertext = packed[:12], packed[12:]
+        plaintext = AESGCM(key).decrypt(iv, ciphertext, None).decode("utf-8")
+    except RanbvalDecryptError:
         raise
     except Exception as e:
+        # Wrong project secret, tampered ciphertext, or malformed payload all land here.
         raise RanbvalDecryptError(
-            "Decryption failed! Did you provide the correct E2E vault secret?"
+            "Decryption failed — check that the project secret matches this token "
+            "and that the token is not corrupted.",
+            code="decrypt_failed",
         ) from e
+
+    return SecretString(_strip_expiry_and_check_ttl(plaintext))
 
 
 def _migrate_from_env(key: str) -> str:
@@ -247,6 +258,11 @@ def _auto_report_usage(env_var: str, roundtrip_ms: float) -> None:
     custom events. Any failure here never affects decryption.
     """
     try:
+        from ranbval_sdk.telemetry.settings import telemetry_disabled
+
+        if telemetry_disabled():
+            return  # user opted out — do not even start the aggregation flusher
+
         from ranbval_sdk.telemetry.client import emit_telemetry, salt_from_ranbval_token
         from ranbval_sdk.telemetry.sampling import usage_sampler
 

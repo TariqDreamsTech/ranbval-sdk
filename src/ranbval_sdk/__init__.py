@@ -8,7 +8,8 @@ Public API, grouped by concern (each name re-exported from its home subpackage):
 - **Config** (:mod:`ranbval_sdk.config`) — ``load_ranbval``, ``get_project_key``,
   ``find_ranbval_file``, ``find_ranbval_directory``, ``resolve_ranbval_mode``.
 - **Access** (:mod:`ranbval_sdk.config.access`) — ``Vault``, ``env``, ``inject``,
-  ``secrets``, ``iter_secrets``, ``Secret``, ``SecretConfig``, ``SecretProvider``.
+  ``secrets``, ``iter_secrets``, ``public``, ``public_config``, ``is_public``,
+  ``Secret``, ``SecretConfig``, ``SecretProvider``.
 - **Crypto** (:mod:`ranbval_sdk.crypto`) — ``safe_decrypt``, ``decrypt_key``,
   ``SecretString``, ``get_audit_log``, ``clear_audit_log``, ``audit_scope``.
 - **Telemetry** (:mod:`ranbval_sdk.telemetry`) — ``emit_telemetry``, ``aemit_telemetry``,
@@ -34,8 +35,11 @@ from ranbval_sdk.config import (
     find_ranbval_file,
     get_project_key,
     inject,
+    is_public,
     iter_secrets,
     load_ranbval,
+    public,
+    public_config,
     resolve_ranbval_mode,
     secrets,
 )
@@ -57,11 +61,11 @@ from ranbval_sdk.exceptions import (
     RepoPolicyError,
 )
 from ranbval_sdk.integrations.factory import secure_client
-from ranbval_sdk.integrations.universal import build_secure_client
 from ranbval_sdk.integrations.proxy import aproxy_request, proxy_request
+from ranbval_sdk.integrations.universal import build_secure_client
 from ranbval_sdk.telemetry import aemit_telemetry, emit_telemetry, track, tracked
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 __all__ = [
     # Config
@@ -76,6 +80,9 @@ __all__ = [
     "inject",
     "secrets",
     "iter_secrets",
+    "public",
+    "public_config",
+    "is_public",
     "Secret",
     "SecretConfig",
     "SecretProvider",

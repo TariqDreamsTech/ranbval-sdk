@@ -9,18 +9,19 @@ from __future__ import annotations
 import contextlib
 import functools
 import inspect
-from typing import Any, Callable, Iterator, Optional
+from collections.abc import Callable, Iterator
+from typing import Any
 
 from ranbval_sdk.telemetry.client import emit_telemetry
 
 
 def track(
     *,
-    client_salt: Optional[str] = None,
-    vault_token_env: Optional[str] = None,
+    client_salt: str | None = None,
+    vault_token_env: str | None = None,
     model_used: str = "custom.request",
     event_kind: str = "custom.request",
-    host_url: Optional[str] = None,
+    host_url: str | None = None,
     background: bool = True,
 ) -> Callable:
     """Decorator: emit telemetry automatically after the wrapped call returns.
@@ -69,11 +70,11 @@ def track(
 @contextlib.contextmanager
 def tracked(
     *,
-    client_salt: Optional[str] = None,
-    vault_token_env: Optional[str] = None,
+    client_salt: str | None = None,
+    vault_token_env: str | None = None,
     model_used: str = "custom.request",
     event_kind: str = "custom.request",
-    host_url: Optional[str] = None,
+    host_url: str | None = None,
     background: bool = True,
 ) -> Iterator[None]:
     """Context manager: emit telemetry once when the block exits.

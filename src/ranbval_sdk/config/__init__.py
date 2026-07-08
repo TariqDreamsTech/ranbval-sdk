@@ -10,7 +10,10 @@ from ranbval_sdk.config.access import (
     Vault,
     env,
     inject,
+    is_public,
     iter_secrets,
+    public,
+    public_config,
     secrets,
 )
 from ranbval_sdk.config.declarative import Secret, SecretConfig
@@ -33,6 +36,9 @@ __all__ = [
     "inject",
     "secrets",
     "iter_secrets",
+    "public",
+    "public_config",
+    "is_public",
     "Secret",
     "SecretConfig",
     "SecretProvider",
