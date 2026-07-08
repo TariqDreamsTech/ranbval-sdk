@@ -191,6 +191,42 @@ def test_disabled_telemetry_makes_emit_a_noop(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
+# universal decrypt flow: decrypt_key() resolves the project secret from the
+# in-memory store after load_ranbval() moved it out of os.environ
+# --------------------------------------------------------------------------- #
+def test_decrypt_key_after_load_ranbval(tmp_path, monkeypatch):
+    """The project secret is moved out of os.environ into the in-memory store by
+    load_ranbval(); decrypt_key() must still resolve it. This is the one universal path
+    a developer uses with ANY provider: decrypt_key('X').use()."""
+    import base64
+
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    import ranbval_sdk as r
+    import ranbval_sdk.crypto.cipher as cipher
+    from ranbval_sdk.crypto.cipher import derive_key
+
+    monkeypatch.setenv("RANBVAL_TELEMETRY_DISABLED", "1")
+    monkeypatch.setattr(cipher, "_enforce_repo_allowlist_if_configured", lambda salt: None)
+
+    secret, salt, real_key = "proj-secret-xyz", "ABCDEFGHIJ", "sk-proj-REAL"
+    iv = os.urandom(12)
+    ct = AESGCM(derive_key(secret, salt)).encrypt(iv, real_key.encode(), None)
+    blob = base64.urlsafe_b64encode(iv + ct).decode().rstrip("=")
+    token = f"ranbval.{salt}.{blob}.openai"
+
+    (tmp_path / ".ranbval").write_text(
+        f"RANBVAL_PROJECT_SECRET={secret}\n[secrets]\nOPENAI_API_KEY={token}\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("RANBVAL_PROJECT_SECRET", raising=False)
+    r.load_ranbval()
+
+    assert r.decrypt_key("OPENAI_API_KEY").use() == real_key
+
+
+# --------------------------------------------------------------------------- #
 # stdout guards are opt-in
 # --------------------------------------------------------------------------- #
 def test_load_ranbval_does_not_patch_print_by_default(tmp_path, monkeypatch):

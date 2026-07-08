@@ -4,6 +4,31 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [2.0.0] - 2026-07-08
+
+### Removed (breaking)
+- **`secure_client()` and `build_secure_client()` are removed.** They implicitly assumed an
+  OpenAI/Anthropic-shaped SDK (a class with an `api_key=` constructor kwarg plus a nested method
+  to patch), so they did not fit providers with a different shape — e.g. Google Gemini
+  (`genai.configure(api_key=...)`), AWS Bedrock (`boto3`), Vertex, and others. Ranbval is a
+  **provider-agnostic secret manager**: decrypt the key and pass it wherever the provider wants it.
+
+  **Migration** — replace the wrapper with a direct decrypt at the call site:
+
+  ```python
+  # before
+  client = secure_client(openai.OpenAI, env_var="OPENAI_API_KEY", key_kwarg="api_key")
+
+  # after — works for OpenAI, Anthropic, Gemini, Bedrock, raw HTTP, anything
+  client = openai.OpenAI(api_key=decrypt_key("OPENAI_API_KEY").use())
+  ```
+
+  Usage is still auto-reported by `decrypt_key()`; nothing about telemetry or the security model
+  changes. The `integrations/factory.py` and `integrations/universal.py` modules were deleted;
+  the server-side `proxy_request()` / `aproxy_request()` remain.
+
+---
+
 ## [1.4.1] - 2026-07-08
 
 Hardening, privacy, and maintainability pass. **No breaking public-API changes** — every

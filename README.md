@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v1.4.1`
+# Ranbval SDK `v2.0.0`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
@@ -115,9 +115,7 @@ OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
 | `safe_decrypt()` | Decrypts a vault token string → `SecretString` |
 | `decrypt_key()` | Reads an env var and decrypts it in one call |
 | `SecretString` | Wrapper that blocks all display paths — value only via `.use()` |
-| `secure_client()` | Wrap a third-party SDK class for auto-decrypt + telemetry |
-| `build_secure_client()` | Same as `secure_client()` but returns a subclass instead of an instance |
-| `proxy_request()` | Route an HTTP request through the Ranbval proxy |
+| `proxy_request()` | Route an HTTP request through the Ranbval proxy (key injected server-side) |
 | `emit_telemetry()` | Record a **custom** usage event (basic usage is auto-reported on every `decrypt_key()`) |
 | `get_audit_log()` | Return the in-process audit log list |
 | `clear_audit_log()` | Clear the in-process audit log |
@@ -158,9 +156,7 @@ ranbval_sdk/
 │   ├── context.py       #   collect_client_context — gather client runtime signals
 │   ├── sampling.py      #   adaptive aggregation (first-seen send, repeats counted)
 │   └── decorators.py    #   @track / tracked()
-├── integrations/        # calling your vendor SDKs safely
-│   ├── factory.py       #   secure_client
-│   ├── universal.py     #   build_secure_client
+├── integrations/        # optional server-side proxy
 │   └── proxy.py         #   proxy_request / aproxy_request (key never leaves the server)
 └── _internal/           # private cross-cutting utilities
     ├── defaults.py      #   shared constants
@@ -337,45 +333,45 @@ print(f"Using key: {secret}")            # → Using key: [ranbval:secret]   (ma
 
 ---
 
-### `secure_client()` / `build_secure_client()`
+### Use with **any** provider
 
-Wrap a third-party SDK class so it auto-decrypts the key and fires telemetry on every call.
+Ranbval is provider-agnostic. There is no per-vendor wrapper to learn or wait for — you decrypt
+the key with `decrypt_key(...)` and pass `.use()` wherever that provider wants it. This works
+identically for OpenAI, Anthropic, Google Gemini, Mistral, Cohere, AWS Bedrock, or a raw HTTP call
+— every one of them is just "give me the key, here's where it goes":
 
 ```python
-from ranbval_sdk import load_ranbval, secure_client
-import openai
-
+from ranbval_sdk import load_ranbval, decrypt_key, public
 load_ranbval()
 
-# Returns an openai.OpenAI instance with auto-decrypt + telemetry
-client = secure_client(
-    openai.OpenAI,
-    env_var="OPENAI_API_KEY",
-    key_kwarg="api_key",
-    method_path_to_patch="chat.completions.create",
-)
+# OpenAI — constructor kwarg
+import openai
+client = openai.OpenAI(api_key=decrypt_key("OPENAI_API_KEY").use())
 
-# Use exactly like openai.OpenAI — telemetry fires automatically
-response = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[{"role": "user", "content": "Hello"}],
-)
-```
-
-`build_secure_client()` returns a subclass instead of an instance — use when you need to instantiate multiple times or pass to a factory:
-
-```python
-from ranbval_sdk import build_secure_client
+# Anthropic — constructor kwarg
 import anthropic
+claude = anthropic.Anthropic(api_key=decrypt_key("ANTHROPIC_API_KEY").use())
 
-SecureAnthropic = build_secure_client(
-    anthropic.Anthropic,
-    env_var="ANTHROPIC_API_KEY",
-    key_kwarg="api_key",
+# Google Gemini — module-level configure()
+import google.generativeai as genai
+genai.configure(api_key=decrypt_key("GEMINI_API_KEY").use())
+
+# Raw HTTP — any client, any header
+import httpx
+httpx.post(
+    public("SERVICE_URL"),                                   # plaintext config
+    headers={"Authorization": f"Bearer {decrypt_key('MY_API_KEY').use()}"},
+    json={"hello": "world"},
 )
-
-client = SecureAnthropic()
 ```
+
+That's the whole contract: **`decrypt_key("X").use()` gives you the plaintext at the call site,
+sealed everywhere else.** No SDK is special-cased, so a provider Ranbval has never heard of works
+on day one. Every `decrypt_key()` still auto-reports usage to the Live Monitor.
+
+> **Tip — cache the client, not the key.** Call `decrypt_key(...).use()` right where you build the
+> client or the request; don't store the plaintext in a long-lived variable (see
+> [`SecretString`](#secretstring) for why).
 
 ---
 

@@ -14,7 +14,6 @@ Public API, grouped by concern (each name re-exported from its home subpackage):
   ``SecretString``, ``get_audit_log``, ``clear_audit_log``, ``audit_scope``.
 - **Telemetry** (:mod:`ranbval_sdk.telemetry`) — ``emit_telemetry``, ``aemit_telemetry``,
   ``track``, ``tracked``.
-- **Integrations** (:mod:`ranbval_sdk.integrations`) — ``secure_client``, ``build_secure_client``.
 - **Secure proxy** (:mod:`ranbval_sdk.integrations.proxy`) — ``proxy_request``, ``aproxy_request``.
 - **Exceptions** (:mod:`ranbval_sdk.exceptions`) — ``RanbvalError`` and its subclasses.
 
@@ -60,12 +59,10 @@ from ranbval_sdk.exceptions import (
     RepoNotAllowedError,
     RepoPolicyError,
 )
-from ranbval_sdk.integrations.factory import secure_client
 from ranbval_sdk.integrations.proxy import aproxy_request, proxy_request
-from ranbval_sdk.integrations.universal import build_secure_client
 from ranbval_sdk.telemetry import aemit_telemetry, emit_telemetry, track, tracked
 
-__version__ = "1.4.1"
+__version__ = "2.0.0"
 
 __all__ = [
     # Config
@@ -98,9 +95,6 @@ __all__ = [
     "aemit_telemetry",
     "track",
     "tracked",
-    # Integrations
-    "secure_client",
-    "build_secure_client",
     # Secure proxy
     "proxy_request",
     "aproxy_request",

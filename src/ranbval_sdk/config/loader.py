@@ -194,7 +194,7 @@ def load_ranbval(
     **Project context** (optional but recommended when using multiple projects):
 
     - ``project_secret``: the ``ranbval-proj-…`` key for this project. Stored as
-      ``RANBVAL_PROJECT_SECRET`` so ``safe_decrypt`` and ``secure_client`` pick it up
+      ``RANBVAL_PROJECT_SECRET`` so ``safe_decrypt`` / ``decrypt_key`` pick it up
       automatically without an extra env var.
     - ``project_name``: short name for this project (e.g. ``"myapp"``). Stored as
       ``RANBVAL_PROJECT_NAME`` and normalised to an uppercase env prefix

@@ -50,7 +50,7 @@ def emit_telemetry(
     can be resolved, this is a no-op (silent).
 
     Call after **your** ``requests`` / ``httpx`` / SDK call when you want the Live Monitor to see it.
-    ``secure_client(..., method_path_to_patch=...)`` calls this automatically for patched methods.
+    (``decrypt_key()`` already auto-reports each decrypt; this is for richer custom events.)
     """
 
     def _post() -> None:
