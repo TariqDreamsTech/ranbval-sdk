@@ -1,12 +1,11 @@
 """Configuration: loading ``.ranbval`` files and accessing the values in them.
 
 - :mod:`~ranbval_sdk.config.loader` — parse and merge layered ``.ranbval*`` files into the env.
-- :mod:`~ranbval_sdk.config.access` — ergonomic access (``Vault``, ``inject``, ``secrets``, ``Secret``).
+- :mod:`~ranbval_sdk.config.access` — imperative access (``Vault``, ``inject``, ``secrets``).
+- :mod:`~ranbval_sdk.config.declarative` — class-based access (``Secret``, ``SecretConfig``).
 """
 
 from ranbval_sdk.config.access import (
-    Secret,
-    SecretConfig,
     SecretProvider,
     Vault,
     env,
@@ -14,6 +13,7 @@ from ranbval_sdk.config.access import (
     iter_secrets,
     secrets,
 )
+from ranbval_sdk.config.declarative import Secret, SecretConfig
 from ranbval_sdk.config.loader import (
     find_ranbval_directory,
     find_ranbval_file,

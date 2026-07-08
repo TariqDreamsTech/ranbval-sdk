@@ -18,14 +18,11 @@ import contextlib
 import threading
 import time
 import traceback
-from typing import Iterator, TypedDict
+from typing import Iterator
 
-
-class AuditEntry(TypedDict):
-    label: str
-    timestamp: float
-    caller: str
-
+# The record shape lives in the serializers package; re-exported here so
+# ``from ranbval_sdk.crypto.audit import AuditEntry`` keeps working.
+from ranbval_sdk.serializers.audit import AuditEntry, build_audit_entry
 
 _lock = threading.Lock()
 _log: list[AuditEntry] = []
@@ -44,7 +41,7 @@ def record_access(label: str) -> None:
             caller = f"{frame.filename}:{frame.lineno}"
             break
     with _lock:
-        _log.append(AuditEntry(label=label, timestamp=time.time(), caller=caller))
+        _log.append(build_audit_entry(label=label, timestamp=time.time(), caller=caller))
 
 
 def get_audit_log() -> list[AuditEntry]:

@@ -1,124 +1,22 @@
-"""Enforce project allowlisted git remotes before decrypting Ranbval keys."""
+"""Backwards-compatibility shim.
 
-from __future__ import annotations
+Repo-allowlist enforcement moved to :mod:`ranbval_sdk.policy.repo` (it is provenance policy,
+not cryptography). This module re-exports it so ``from ranbval_sdk.crypto.repo_policy import …``
+keeps working.
+"""
 
-import json
-import urllib.error
-import urllib.parse
-import urllib.request
-from urllib.parse import urlparse
+from ranbval_sdk.policy.repo import (
+    _origin_allowed,
+    assert_repo_allowed_for_decrypt,
+    fetch_repo_policy,
+    get_git_remote_origin,
+    normalize_git_remote_url,
+)
 
-from ranbval_sdk._internal import transport
-from ranbval_sdk.exceptions import RepoNotAllowedError, RepoPolicyError
-
-
-def normalize_git_remote_url(url: str | None) -> str | None:
-    if not url or not isinstance(url, str):
-        return None
-    u = url.strip().rstrip("/")
-    if not u:
-        return None
-    if u.lower().endswith(".git"):
-        u = u[:-4]
-    ul = u.lower()
-    if ul.startswith("git@"):
-        at = u.find("@")
-        colon = u.find(":", at)
-        if colon == -1:
-            return ul
-        host = u[at + 1 : colon].strip().lower()
-        path = u[colon + 1 :].strip().strip("/").lower()
-        return f"https://{host}/{path}"
-    parsed = urlparse(u)
-    # Use parsed.hostname (strips userinfo like tokens/passwords) instead of
-    # parsed.netloc which includes "token@host" — CI systems inject tokens into
-    # the remote URL (e.g. https://ghp_TOKEN@github.com/org/repo) which would
-    # otherwise never match the allowlist entry "https://github.com/org/repo".
-    host = (parsed.hostname or "").lower()
-    if not host:
-        return ul
-    port = f":{parsed.port}" if parsed.port else ""
-    path = (parsed.path or "").strip("/").lower()
-    if path.endswith(".git"):
-        path = path[:-4]
-    scheme = (parsed.scheme or "https").lower()
-    return f"{scheme}://{host}{port}/{path}"
-
-
-def get_git_remote_origin() -> str | None:
-    try:
-        import subprocess
-
-        out = subprocess.check_output(
-            ["git", "config", "--get", "remote.origin.url"],
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).strip()
-        return out or None
-    except Exception:
-        return None
-
-
-def _origin_allowed(origin: str, allowed: list[str]) -> bool:
-    g = normalize_git_remote_url(origin)
-    if not g:
-        return False
-    norms = {normalize_git_remote_url(x) for x in allowed if x}
-    norms.discard(None)
-    return g in norms
-
-
-def fetch_repo_policy(ranbval_host: str, client_salt: str) -> dict:
-    base = ranbval_host.rstrip("/")
-    qs = urllib.parse.urlencode({"client_salt": client_salt})
-    url = f"{base}/api/public/repo-policy?{qs}"
-    req = urllib.request.Request(
-        url, method="GET", headers={"Accept": "application/json"}
-    )
-    with transport.urlopen(req, timeout=12) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
-def assert_repo_allowed_for_decrypt(ranbval_host: str, client_salt: str) -> None:
-    """
-    Enforce the project's repo allowlist before decryption.
-
-    The policy is fetched from the Ranbval control plane and cannot be bypassed on the
-    client: if the project has any ``allowed_repos``, decryption proceeds only when
-    ``git remote origin`` matches one of them (https / ssh / .git normalized). This is a
-    mandatory, server-controlled check — there is no local skip.
-    """
-    try:
-        policy = fetch_repo_policy(ranbval_host, client_salt)
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            raise RepoPolicyError(
-                "Ranbval: unknown session for this key (repo policy could not be loaded). "
-                "Check RANBVAL_HOST and that this token belongs to a valid project session."
-            ) from e
-        raise RepoPolicyError(
-            f"Ranbval: could not load repo policy (HTTP {e.code}). Check RANBVAL_HOST."
-        ) from e
-    except urllib.error.URLError as e:
-        raise RepoPolicyError(
-            f"Ranbval: could not reach {ranbval_host!r} to verify allowed repositories: {e}"
-        ) from e
-
-    if not policy.get("enforce_allowlist"):
-        return
-
-    allowed = policy.get("allowed_repos") or []
-    origin = get_git_remote_origin()
-    if not origin:
-        raise RepoNotAllowedError(
-            "Ranbval: this key may only be used from an allowlisted Git repository, "
-            "but no `git remote origin` was found. Work inside a clone of an allowed repo "
-            "(run `git remote -v` to confirm)."
-        )
-
-    if not _origin_allowed(origin, allowed):
-        raise RepoNotAllowedError(
-            "Ranbval: you are not allowed to use this key from this repository. "
-            f"Current origin is {origin!r}. Add this URL (or its GitHub https/ssh equivalent) "
-            "to Allowed repositories in the Ranbval dashboard for this project."
-        )
+__all__ = [
+    "assert_repo_allowed_for_decrypt",
+    "fetch_repo_policy",
+    "get_git_remote_origin",
+    "normalize_git_remote_url",
+    "_origin_allowed",
+]

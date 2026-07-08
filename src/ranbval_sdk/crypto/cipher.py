@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from ranbval_sdk.crypto.secret_string import SecretString
 from ranbval_sdk._internal.defaults import DEFAULT_RANBVAL_HOST
 from ranbval_sdk.exceptions import RanbvalConfigError, RanbvalDecryptError
-from ranbval_sdk.crypto.repo_policy import assert_repo_allowed_for_decrypt
+from ranbval_sdk.policy.repo import assert_repo_allowed_for_decrypt
 
 # PBKDF2-HMAC-SHA256 work factor. This value is part of the key derivation and is
 # NOT encoded in the token, so it MUST stay in lock-step with the Ranbval control

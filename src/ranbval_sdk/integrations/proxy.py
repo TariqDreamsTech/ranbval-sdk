@@ -43,6 +43,7 @@ from ranbval_sdk._internal import transport
 from ranbval_sdk.crypto.cipher import _find_project_secret_for
 from ranbval_sdk._internal.defaults import DEFAULT_RANBVAL_HOST
 from ranbval_sdk.exceptions import ProxyError
+from ranbval_sdk.serializers.proxy import build_proxy_payload
 
 __all__ = ["proxy_request", "aproxy_request", "ProxyError"]
 
@@ -149,18 +150,18 @@ def proxy_request(
         )
 
     # ── Build request ────────────────────────────────────────────────────────
-    payload = {
-        "project_secret": resolved_project_secret,
-        "token": token,
-        "target_url": target_url,
-        "method": method.upper(),
-        "headers": headers or {},
-        "body": body,
-        "inject_as": inject_as,
-        "model_used": model_used,
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-    }
+    payload = build_proxy_payload(
+        project_secret=resolved_project_secret,
+        token=token,
+        target_url=target_url,
+        method=method,
+        headers=headers,
+        body=body,
+        inject_as=inject_as,
+        model_used=model_used,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+    )
 
     url = f"{host}/api/execute"
     req = urllib.request.Request(

@@ -248,50 +248,6 @@ def iter_secrets(*, mode: str | None = None) -> Iterator[tuple[str, SecretString
             yield name, decrypt_key(name)
 
 
-class Secret:
-    """Descriptor for declaring a secret on a config class — decrypted lazily, cached.
-
-    ::
-
-        class Config(SecretConfig):
-            openai = Secret("OPENAI_API_KEY")
-            stripe = Secret("STRIPE_KEY", reveal=True)   # plaintext str
-
-        Config.openai        # -> SecretString (cached on the class)
-        Config.stripe        # -> plaintext str
-    """
-
-    __slots__ = ("env_var", "reveal", "attr")
-
-    def __init__(self, env_var: str, *, reveal: bool = False):
-        self.env_var = env_var
-        self.reveal = reveal
-        self.attr = env_var
-
-    def __set_name__(self, owner: type, name: str) -> None:
-        self.attr = name
-
-    def __get__(self, obj: Any, owner: type | None = None) -> Any:
-        holder = owner if owner is not None else type(obj)
-        _ensure_env_loaded()
-        store = holder._secret_cache
-        if self.env_var not in store:
-            store[self.env_var] = _resolve(self.env_var, reveal=False)
-        value = store[self.env_var]
-        if self.reveal and isinstance(value, SecretString):
-            return value.use()
-        return value
-
-
-class SecretConfig:
-    """Base for declarative secret config classes; each subclass gets its own cache."""
-
-    _secret_cache: dict[str, Any] = {}
-    _secret_fields: tuple[str, ...] = ()
-
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        cls._secret_cache = {}
-        cls._secret_fields = tuple(
-            name for name, value in vars(cls).items() if isinstance(value, Secret)
-        )
+# The declarative, class-based API (``Secret`` / ``SecretConfig``) lives in
+# ``ranbval_sdk.config.declarative`` — a distinct access style from the imperative
+# ``Vault`` / ``inject`` / ``secrets`` above. Both are re-exported from ``config``.

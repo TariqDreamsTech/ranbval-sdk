@@ -4,6 +4,42 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [1.3.0] - 2026-07-08
+
+Internal reorganization for a stricter separation of concerns — **gather → shape → send**,
+and **policy** split out from **crypto**. **The public API is unchanged**; every
+`from ranbval_sdk import …` import works exactly as before, and the old submodule paths keep
+resolving via re-export shims.
+
+### Added
+- **`serializers/` package** — one module per wire shape, each a pure *shaping* function
+  (no I/O, no data-gathering): `telemetry.py` (`build_telemetry_payload` +
+  `build_security_metadata`), `proxy.py` (`build_proxy_payload`), `token.py`
+  (`salt_from_ranbval_token`), and `audit.py` (`AuditEntry` + `build_audit_entry`).
+- **`policy/` package** — provenance & access enforcement as its own concern. The git-remote
+  allowlist check moved here (`policy/repo.py`); `crypto/` now contains cryptography only.
+- **`telemetry/context.py`** — `collect_client_context()` gathers the client runtime signals
+  (SDK/Python version, git branch & email, timezone, hashed device id) that feed a telemetry
+  event. Separated from the serializer, which now only shapes the values it is given.
+- **`config/declarative.py`** — the class-based access API (`Secret`, `SecretConfig`) split out
+  from the imperative `Vault` / `inject` / `secrets` in `config/access.py`.
+- **`_internal/logging.py`** — the opt-in `RANBVAL_TELEMETRY_DEBUG` stderr diagnostic moved out
+  of `_internal/defaults.py`, which is now constants-only.
+
+### Changed
+- `telemetry/client.py` and `integrations/proxy.py` now delegate payload construction to the
+  `serializers/` builders instead of inlining the request dicts.
+
+### Notes
+- Back-compatible re-exports are in place: `ranbval_sdk.crypto.repo_policy`,
+  `ranbval_sdk.crypto.audit.AuditEntry`, `ranbval_sdk.telemetry.salt_from_ranbval_token`,
+  `ranbval_sdk.telemetry.client.salt_from_ranbval_token`, and
+  `ranbval_sdk._internal.defaults.warn_telemetry_send_failed` all still import.
+- No change to crypto behavior, the `.ranbval` wire format, the telemetry/proxy payloads
+  (byte-identical), or the `reveal=False` sealing defaults.
+
+---
+
 ## [1.2.0] - 2026-07-07
 
 Policy is now **server-controlled and always-on** — the client can no longer skip

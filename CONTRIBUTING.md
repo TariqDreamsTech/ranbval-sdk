@@ -49,7 +49,8 @@ flag to disable them.
 - Keep functions focused — one responsibility per function
 - Do not import from `src/ranbval_sdk` internals in tests; use the public API from `__init__.py`
 - New cryptographic logic must go through the existing `crypto/` package — do not introduce a second encryption path
-- Keep each module within its concern subpackage (`config/`, `crypto/`, `telemetry/`, `integrations/`); only `__init__.py`, `exceptions.py`, and `py.typed` live at the package root
+- Keep each module within its concern subpackage (`config/`, `crypto/`, `policy/`, `serializers/`, `telemetry/`, `integrations/`); only `__init__.py`, `exceptions.py`, and `py.typed` live at the package root
+- Respect the **gather → shape → send** split: request bodies are shaped by pure functions in `serializers/` (no I/O), runtime values are gathered elsewhere (e.g. `telemetry/context.py`), and only the client modules do I/O
 
 Formatting is enforced with `ruff` and `black` — run both before opening a PR.
 
@@ -63,11 +64,14 @@ ranbval-sdk/
 │   ├── __init__.py        ← public API surface (all exports live here)
 │   ├── exceptions.py      ← RanbvalError hierarchy
 │   ├── py.typed           ← PEP 561 type marker
-│   ├── config/            ← loader.py (.ranbval loading) + access.py (Vault/inject/secrets)
-│   ├── crypto/            ← cipher.py, secret_string.py, audit.py, repo_policy.py
-│   ├── telemetry/         ← client.py (emit/aemit) + decorators.py (@track/tracked)
+│   ├── config/            ← loader.py + access.py (Vault/inject/secrets) + declarative.py (Secret/SecretConfig)
+│   ├── crypto/            ← cipher.py, secret_string.py, audit.py (cryptography only)
+│   ├── policy/            ← repo.py (git-remote allowlist enforcement)
+│   ├── serializers/       ← telemetry.py, proxy.py, token.py, audit.py (pure wire shaping)
+│   ├── telemetry/         ← client.py (emit/aemit), context.py (gather), sampling.py, decorators.py
 │   ├── integrations/      ← factory.py, universal.py, proxy.py
-│   └── _internal/         ← defaults.py, transport.py (private cross-cutting utils)
+│   └── _internal/         ← defaults.py (constants), logging.py, transport.py
+
 ├── tests/                 ← pytest suite (+ conftest.py)
 ├── scripts/               ← manual integration scripts
 ├── pyproject.toml

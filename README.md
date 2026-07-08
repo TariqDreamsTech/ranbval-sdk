@@ -88,14 +88,23 @@ ranbval_sdk/
 ├── py.typed             # ships type information (PEP 561)
 ├── config/              # your .ranbval configuration surface
 │   ├── loader.py        #   load_ranbval, find_*, resolve_ranbval_mode, get_project_key
-│   └── access.py        #   Vault, env, inject, secrets, iter_secrets, Secret, SecretConfig
-├── crypto/              # cryptography & sealed secrets
+│   ├── access.py        #   imperative access — Vault, env, inject, secrets, iter_secrets
+│   └── declarative.py   #   class-based access — Secret, SecretConfig
+├── crypto/              # cryptography & sealed secrets (only crypto lives here)
 │   ├── cipher.py        #   AES-256-GCM decrypt + project-secret resolution
 │   ├── secret_string.py #   SecretString — the sealed, never-printable value
-│   ├── audit.py         #   in-memory log of every .use()
-│   └── repo_policy.py   #   git-remote provenance enforcement (the decrypt gate)
+│   └── audit.py         #   in-memory log of every .use()
+├── policy/              # provenance & access policy (the decrypt gate)
+│   └── repo.py          #   git-remote allowlist enforcement (server-controlled)
+├── serializers/         # wire (de)serializers — one module per payload shape
+│   ├── telemetry.py     #   /api/telemetry body + security metadata
+│   ├── proxy.py         #   /api/execute request body
+│   ├── token.py         #   parse ranbval.<salt>.<blob>.<label>
+│   └── audit.py         #   AuditEntry record shape
 ├── telemetry/           # usage reporting to the Live Monitor
-│   ├── client.py        #   emit_telemetry / aemit_telemetry
+│   ├── client.py        #   emit_telemetry / aemit_telemetry (I/O)
+│   ├── context.py       #   collect_client_context — gather client runtime signals
+│   ├── sampling.py      #   adaptive aggregation (first-seen send, repeats counted)
 │   └── decorators.py    #   @track / tracked()
 ├── integrations/        # calling your vendor SDKs safely
 │   ├── factory.py       #   secure_client
@@ -103,8 +112,13 @@ ranbval_sdk/
 │   └── proxy.py         #   proxy_request / aproxy_request (key never leaves the server)
 └── _internal/           # private cross-cutting utilities
     ├── defaults.py      #   shared constants
+    ├── logging.py       #   opt-in stderr diagnostics (RANBVAL_TELEMETRY_DEBUG)
     └── transport.py     #   HTTPS via urllib + certifi
 ```
+
+> Layered by responsibility: **gather** (`telemetry.context`) → **shape** (`serializers/`)
+> → **send** (`telemetry.client`). Policy enforcement (`policy/`) is separate from
+> cryptography (`crypto/`). You still only import from the top level.
 
 ---
 
