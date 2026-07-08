@@ -4,7 +4,7 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
-## [1.4.0] - 2026-07-08
+## [1.4.1] - 2026-07-08
 
 Hardening, privacy, and maintainability pass. **No breaking public-API changes** — every
 `from ranbval_sdk import …` still works. One documented behaviour is now correct:
@@ -33,6 +33,13 @@ previously named `env_var_name` and only worked positionally).
   `Cython`/`setuptools` build requirements. The SDK ships as a universal wheel + sdist that
   installs on any platform (previously only a macOS-arm64 wheel built, and it referenced a
   `crypto.py` that no longer exists). Obfuscation was never a security control.
+- **`SecretString` refuses serialization** — `pickle`, `copy`, and `deepcopy` now raise
+  `TypeError`, closing the real accidental-leak paths (error reporters like Sentry pickling
+  local variables, celery/multiprocessing pickling task args, disk/redis caches). `.use()`
+  values keep working inside SDKs (copy allowed for the immutable str; only pickle refused).
+  Docstrings/README rewritten to describe the guarantees **honestly** — masking blocks
+  accidental exposure; it is not a defense against deliberate reveals or process-memory
+  attackers, and memory zeroing/`mlock` are best-effort, not guarantees.
 - **`load_ranbval()` no longer patches global builtins by default** — the `print` /
   `sys.stdout.write` output guards are now opt-in via `load_ranbval(guard_stdout=True)`.
   `SecretString` still masks itself via `__str__`/`__repr__`. Removed the fragile

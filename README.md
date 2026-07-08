@@ -2,9 +2,13 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v1.4.0`
+# Ranbval SDK `v1.4.1`
 
-Keep API secrets out of plaintext config. Encrypt them in the Ranbval dashboard, store encrypted tokens in `.ranbval` files, decrypt only at runtime — AES-256-GCM with PBKDF2 key derivation, no plaintext ever touches source control.
+**The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
+Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
+runtime — AES-256-GCM with PBKDF2 key derivation, no plaintext ever touches source control.
+Unlike a plain `.env`, a stolen config is useless off your allowlisted repos, and every use is
+attributable in the Live Monitor.
 
 ```bash
 pip install ranbval-sdk
@@ -14,14 +18,60 @@ pip install ranbval-sdk
 
 ## Why Ranbval Exists
 
-With so many LLM APIs and third-party services in use today, managing secrets has become a real operational problem. Someone shares an API key, it gets copied, forwarded, and committed — and suddenly the bill arrives with no way to trace which repo or person burned the tokens.
+Every team now juggles a pile of API keys — LLM providers, payment processors, databases,
+third-party services. Those keys leak constantly, and almost always the same handful of ways:
 
-| Problem | Ranbval Solution |
-|---------|-----------------|
-| API keys committed to Git | Encrypted `.ranbval*` files — plaintext never touches source control |
-| Keys copied and shared freely | Repo allowlist — enforced by the control plane; an unauthorized repo cannot decrypt, and it can't be skipped from the client |
-| No idea who used what, when | Live Monitor — every decrypt is reported automatically with machine, repo, model, tokens |
-| `load_dotenv()` scattered everywhere | One call: `load_ranbval()` — layered, mode-aware, zero side effects on import |
+- A key gets **committed to Git** — and bots scrape public repos within minutes.
+- A `.env` file is **copied and shared** over Slack/email — then forwarded, forgotten, and
+  lives forever with no expiry.
+- A key is **accidentally printed to logs** or captured by an error reporter — and now it sits
+  in Datadog/Sentry, readable by the whole org, retained for years.
+- When a key *does* leak, **nobody knows who leaked it or which repo burned the tokens** — so
+  you can't rotate with confidence.
+
+`.env` + `load_dotenv()` does nothing about any of this: the secret is plaintext on disk, works
+anywhere it's copied, forever, with zero visibility. Ranbval is built to close exactly these
+gaps.
+
+### What it actually protects (and what nothing can)
+
+Be clear-eyed about the threat model — it's what makes the guarantees trustworthy:
+
+- **What no tool can stop:** an attacker who already runs code *inside your process*. If they can
+  execute in your app, they can read `os.environ`, hook functions, or dump memory — and **no**
+  secret manager (Vault, AWS/GCP Secrets Manager, Doppler, Ranbval) prevents that. It isn't the
+  real-world leak vector.
+- **What Ranbval does stop** — the leaks that actually happen:
+
+| Real-world leak | `.env` | Ranbval |
+|---|---|---|
+| Key committed to Git | 🔴 plaintext, public instantly | 🟢 encrypted token — a commit leaks nothing usable |
+| Config file copied / shared | 🔴 works anywhere, forever | 🟢 **useless without the project secret *and* an allowlisted repo** |
+| Key printed to logs / captured by Sentry | 🔴 sits in log storage for years | 🟢 `SecretString` masks every display path; can't be pickled into a cache/report |
+| A key leaks — who? which repo? | 🔴 zero visibility | 🟢 **Live Monitor** flags the same credential on a new device/IP → rotate with proof |
+
+The crown jewel is the **repo allowlist**: even if someone steals your entire `.ranbval` file
+*and* your project secret, they still can't decrypt it from a repo that isn't on your
+control-plane allowlist. A stolen config is a dead config.
+
+### An analogy
+
+You can't make a house key that opens *your* door but that a thief holding it can't use — if the
+key opens the lock, whoever holds it gets in. That's physics, not a flaw. Real security comes
+from three other things, and Ranbval gives you all three:
+
+1. **The key isn't lying in the street** → plaintext never touches Git (encrypted tokens).
+2. **The key only works at your house** → the repo allowlist makes a stolen file worthless elsewhere.
+3. **An alarm rings if a stranger walks in** → leak detection alerts on a new device/IP.
+
+### Why use it
+
+- **Drop-in.** One `load_ranbval()` replaces scattered `load_dotenv()`; keys pass straight into
+  your existing SDKs — Ranbval ships no vendor dependencies.
+- **Safe by default.** Secrets are sealed `SecretString`s that refuse to print, log, or serialize;
+  plain config is opt-in plaintext via `[public]` sections and `public()`.
+- **Accountable.** Every decrypt is attributable, and misuse is detectable — something a plain
+  `.env` can never offer.
 
 ---
 
@@ -239,7 +289,7 @@ This is the recommended pattern for most applications — it reduces boilerplate
 
 ### `SecretString`
 
-A string wrapper that makes it impossible to accidentally expose a secret through print, logging, f-strings, or repr.
+A wrapper that blocks the *accidental* ways a secret leaks — print, logging, f-strings, repr, and even serialization (pickle/copy). It cannot stop a *deliberate* reveal, and it makes no promise your OS/runtime can't keep (see **Honest limits** below).
 
 ```python
 from ranbval_sdk import SecretString
@@ -249,26 +299,33 @@ from ranbval_sdk import SecretString
 secret = SecretString("sk-proj-super-secret-key", label="openai")
 
 print(secret)           # [ranbval:secret]
-repr(secret)            # SecretString(***)
+repr(secret)            # SecretString(***)      ← what Sentry/error reporters capture
 f"key={secret}"         # key=[ranbval:secret]
+"key=%s" % secret       # key=[ranbval:secret]
 str(secret)             # [ranbval:secret]
 len(secret)             # 26  ← safe
+pickle.dumps(secret)    # TypeError — can't ride out via cache/queue/error report
+copy.deepcopy(secret)   # TypeError — no silent plaintext duplicate
 
 # Only way to get the real value:
 real_value = secret.use()
 ```
 
-**Why this matters:**
+**The one rule that keeps a secret unseen:** call `.use()` **only inline, right where you hand it to the SDK** — never store it in a variable and never print it:
 
 ```python
-# Old way — key leaks in logs/stdout
-api_key = os.environ["OPENAI_KEY"]
-print(f"Using key: {api_key}")           # key printed to console/logs
+client = openai.OpenAI(api_key=decrypt_key("OPENAI_KEY").use())   # ✓ correct
+headers = {"Authorization": f"Bearer {decrypt_key('X').use()}"}    # ✓ correct
 
-# Ranbval way — impossible to leak accidentally
 secret = decrypt_key("OPENAI_KEY")
-print(f"Using key: {secret}")            # → Using key: [ranbval:secret]
+print(f"Using key: {secret}")            # → Using key: [ranbval:secret]   (masked)
 ```
+
+**Honest limits** (a security library must not over-promise):
+
+- `.use()` returns a **real `str`** so third-party SDKs can build request headers with it. That means `secret.use()[:]` or `print(f"{secret.use()}")` *will* reveal the value — that is deliberate bypassing, not the accidental leak this guards. Anything the SDK can read to build a request, code can read too.
+- Memory "zeroing" and `mlock` are **best-effort defence-in-depth, not guarantees.** In CPython the interpreter and SDK make immutable `str`/`bytes` copies this class can't pin or wipe. An attacker who can read your process memory (ptrace / core dump / debugger) is out of scope for any Python SDK.
+- The real protection is upstream: plaintext never touches your repo, and the control plane governs who may decrypt. RAM hardening is a minor extra layer.
 
 | Method / Property | Description |
 |-------------------|-------------|
@@ -276,6 +333,7 @@ print(f"Using key: {secret}")            # → Using key: [ranbval:secret]
 | `len(secret)` | Length of the secret (safe to log) |
 | `.label` | Optional name set at creation |
 | `==` | Compares two `SecretString` values securely |
+| `pickle` / `copy` | Refused with `TypeError` — a secret can't be serialized or duplicated |
 
 ---
 

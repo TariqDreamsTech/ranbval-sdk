@@ -117,6 +117,47 @@ def test_expired_token_raises(no_network_gate):
 
 
 # --------------------------------------------------------------------------- #
+# secret cannot leak via serialization / duplication
+# --------------------------------------------------------------------------- #
+def test_secretstring_blocks_pickle_and_copy():
+    import copy
+    import pickle
+
+    from ranbval_sdk import SecretString
+
+    s = SecretString("sk-super-secret", label="openai")
+    for call in (lambda: pickle.dumps(s), lambda: copy.copy(s), lambda: copy.deepcopy(s)):
+        with pytest.raises(TypeError):
+            call()
+
+
+def test_protectedstr_blocks_pickle_but_allows_sdk_use():
+    import copy
+    import pickle
+
+    from ranbval_sdk import SecretString
+
+    x = SecretString("sk-super-secret").use()
+    # SDK header construction must keep working
+    assert f"Bearer {x}" == "Bearer sk-super-secret"
+    # display paths masked
+    assert str(x) == "[ranbval:secret]"
+    # copy allowed (immutable str), pickle refused (would carry plaintext)
+    assert copy.copy(x) is not None
+    with pytest.raises(TypeError):
+        pickle.dumps(x)
+
+
+def test_secretstring_masks_percent_and_format():
+    from ranbval_sdk import SecretString
+
+    s = SecretString("sk-super-secret")
+    assert "%s" % s == "[ranbval:secret]"  # noqa: UP031 — deliberately testing %-format masking
+    assert f"{s}" == "[ranbval:secret]"
+    assert "sk-super" not in repr(s)
+
+
+# --------------------------------------------------------------------------- #
 # telemetry privacy switches
 # --------------------------------------------------------------------------- #
 def test_telemetry_disabled_flag(monkeypatch):

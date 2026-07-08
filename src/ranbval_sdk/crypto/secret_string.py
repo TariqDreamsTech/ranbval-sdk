@@ -1,25 +1,42 @@
-"""
-SecretString — a string wrapper that never exposes its value via print/str/repr/format/log.
+"""SecretString — a wrapper that blocks the *accidental* exposure paths for a secret.
 
-The decrypted secret is held in a mutable bytearray so it can be genuinely zeroed
-from memory after use. All display paths are blocked against accidental exposure:
+What it protects against (the mistakes that actually happen)::
 
-    print(secret)        →  [ranbval:secret]
-    str(secret)          →  [ranbval:secret]
-    repr(secret)         →  SecretString(***)
-    f"{secret}"          →  [ranbval:secret]
-    logging.info(secret) →  [ranbval:secret]
-    json.dumps(secret)   →  TypeError (not serializable — intentional)
+    print(secret)          →  [ranbval:secret]
+    str(secret)            →  [ranbval:secret]
+    repr(secret)           →  SecretString(***)      # also what error reporters capture
+    f"{secret}"            →  [ranbval:secret]
+    "%s" % secret          →  [ranbval:secret]
+    logging.info(secret)   →  [ranbval:secret]
+    json.dumps(secret)     →  TypeError (intentional)
+    pickle.dumps(secret)   →  TypeError (intentional — can't leak via cache/queue/Sentry)
+    copy.deepcopy(secret)  →  TypeError (intentional — no silent plaintext duplicate)
 
-Two ways to consume the value:
+Consuming the value::
 
-    # Direct access
-    secret.use()         →  returns the raw str; secret remains valid
+    secret.use()           →  the real str, for passing straight into an SDK/HTTP client
 
-    # Context manager — zeroes memory automatically on block exit
-    with decrypt_key("MY_KEY") as key:
+    with decrypt_key("MY_KEY") as key:     # context manager wipes on block exit
         client = openai.OpenAI(api_key=key)
-    # secret is wiped here; cannot be used again
+
+The one rule that keeps a secret unseen
+---------------------------------------
+**Call ``.use()`` only inline, at the exact point you hand the value to the SDK — never
+store it in a variable and never print it.** If you follow that, the secret only ever exists
+as a sealed ``SecretString`` in your code, and every display path above is masked.
+
+Honest limits (a security library must not over-promise)
+--------------------------------------------------------
+- ``.use()`` returns a **real ``str``** so third-party SDKs can build headers with it. That
+  means the plaintext genuinely exists in the string — ``secret.use()[:]`` or
+  ``print(f"{secret.use()}")`` will reveal it. That is *deliberate* bypassing, not the
+  accidental leak this guards; anything the SDK can read to build a request, code can read too.
+- "Zeroing" and ``mlock`` are **best-effort defence-in-depth, not guarantees.** In a managed
+  runtime (CPython) the interpreter and the SDK make immutable ``str``/``bytes`` copies of the
+  value that this class cannot pin or wipe. An attacker who can read your process memory
+  (ptrace/core-dump/debugger) has already won — that is out of scope for any Python SDK.
+- The real protection this product gives is upstream: secrets never sit in plaintext in your
+  repo, and the control plane enforces who may decrypt. RAM hardening is a minor extra layer.
 """
 
 from __future__ import annotations
@@ -101,6 +118,18 @@ class _ProtectedStr(str):
         # correctly, so f"Bearer {key}" in SDK code builds the right Authorization header.
         # print(x) (which calls __str__ directly) remains masked.
         return format(self[:], spec)
+
+    # Serialization is a real accidental-leak path: error reporters (Sentry) pickle locals,
+    # celery/multiprocessing pickle task args, disk/redis caches pickle values. Refuse it so
+    # the plaintext can never ride out that way. copy() is allowed (str is immutable → self).
+    def __copy__(self) -> _ProtectedStr:
+        return self
+
+    def __deepcopy__(self, memo: object) -> _ProtectedStr:
+        return self
+
+    def __reduce_ex__(self, protocol: int) -> object:
+        raise TypeError("Ranbval secret cannot be pickled (it would expose the plaintext).")
 
 
 # ── Output guards ─────────────────────────────────────────────────────────────
@@ -218,6 +247,18 @@ class SecretString:
     # Block attribute setting from outside
     def __setattr__(self, _name: str, _value: object) -> None:
         raise AttributeError("SecretString is immutable")
+
+    # Refuse serialization and duplication. A slotted object would otherwise pickle its
+    # ``_buf`` (the plaintext bytes) straight into a cache/queue/error report, and a
+    # deepcopy would scatter extra plaintext copies through memory. Both are blocked.
+    def __reduce_ex__(self, protocol: int) -> object:
+        raise TypeError("SecretString cannot be pickled (it would expose the secret).")
+
+    def __copy__(self) -> SecretString:
+        raise TypeError("SecretString cannot be copied (it would duplicate the secret).")
+
+    def __deepcopy__(self, memo: object) -> SecretString:
+        raise TypeError("SecretString cannot be deep-copied (it would duplicate the secret).")
 
     # ── Only explicit access point ─────────────────────────────────────────
 

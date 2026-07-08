@@ -65,7 +65,7 @@ from ranbval_sdk.integrations.proxy import aproxy_request, proxy_request
 from ranbval_sdk.integrations.universal import build_secure_client
 from ranbval_sdk.telemetry import aemit_telemetry, emit_telemetry, track, tracked
 
-__version__ = "1.4.0"
+__version__ = "1.4.1"
 
 __all__ = [
     # Config
