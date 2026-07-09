@@ -4,6 +4,25 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [2.2.1] - 2026-07-09
+
+### Changed / Security
+- **Closed the `_plaintext_bytes()` convenience bypass** — that internal method (which
+  reconstructed the plaintext without going through `.use()`) is removed; reconstruction is now
+  a module-level helper the class calls via `object.__getattribute__`, so there is no
+  `secret.<method>()` an external caller can invoke to reveal a value.
+- **Naive buffer reads are now flagged** — accessing `s._buf` / `s._pad` directly (a reveal-gate
+  and monitor bypass) fires `secret.possible_exfil` (`method="buffer_read"`) to the access
+  monitor / Live Monitor, then still returns the value. The SDK's own internals read the slots
+  via `object.__getattribute__`, so they don't trip it.
+
+  **Honest limit (unchanged):** an attacker using `object.__getattribute__(s, "_buf")` *directly*
+  bypasses even this — that path is undetectable/unpreventable in-process for any tool. The only
+  real protection for a secret that must never be reconstructable is the `[proxy]` section, where
+  the plaintext never exists in the client process at all.
+
+---
+
 ## [2.2.0] - 2026-07-09
 
 Trusted-party controls: **restrict** where a secret may be revealed, and **detect** when it is.

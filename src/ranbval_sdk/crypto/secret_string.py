@@ -177,6 +177,13 @@ def _notify_reveal(method: str) -> None:
             pass
 
 
+def _reconstruct(buf: bytearray, pad: bytearray) -> bytes:
+    """XOR-unmask the stored buffer back to plaintext bytes. Module-level (not a method) so a
+    caller cannot reveal a secret via ``s.<method>()`` — the SDK reads the slots with
+    ``object.__getattribute__`` and calls this internally."""
+    return bytes(b ^ p for b, p in zip(buf, pad, strict=True))
+
+
 # Set by :mod:`ranbval_sdk.config.reveal`. Called with the secret's label inside ``.use()``;
 # it raises if that secret is restricted to a reveal scope and we are not inside one.
 _reveal_gate: object = None
@@ -266,11 +273,16 @@ class SecretString:
         object.__setattr__(self, "_label", label)
         object.__setattr__(self, "_wiped", False)
 
-    def _plaintext_bytes(self) -> bytes:
-        """Reconstruct the plaintext bytes from the masked buffer (transient — for use/eq/hash)."""
-        buf = object.__getattribute__(self, "_buf")
-        pad = object.__getattribute__(self, "_pad")
-        return bytes(b ^ p for b, p in zip(buf, pad, strict=True))
+    def __getattribute__(self, name: str):
+        # Reading the masked buffer directly (``s._buf`` / ``s._pad``) is a reveal-gate /
+        # monitor bypass — a normal caller never touches these. Report it so the Live Monitor
+        # can raise a warning, then still return the value. NOTE: the SDK's own internals read
+        # these via ``object.__getattribute__`` (which does NOT come through here), so this only
+        # fires on *external* access; and an attacker using ``object.__getattribute__`` directly
+        # bypasses this too — that path is unpreventable/undetectable in-process (documented).
+        if name in ("_buf", "_pad"):
+            _notify_reveal("buffer_read")
+        return object.__getattribute__(self, name)
 
     # ── Memory wipe ────────────────────────────────────────────────────────
 
@@ -310,12 +322,27 @@ class SecretString:
                 other, "_wiped"
             ):
                 return False
-            # Deobfuscate both (each has its own pad) and compare in constant time.
-            return hmac.compare_digest(self._plaintext_bytes(), other._plaintext_bytes())
+            # Deobfuscate both (each has its own pad) and compare in constant time. Read the
+            # slots via object.__getattribute__ so we don't trip our own buffer-read monitor.
+            return hmac.compare_digest(
+                _reconstruct(
+                    object.__getattribute__(self, "_buf"),
+                    object.__getattribute__(self, "_pad"),
+                ),
+                _reconstruct(
+                    object.__getattribute__(other, "_buf"),
+                    object.__getattribute__(other, "_pad"),
+                ),
+            )
         return NotImplemented
 
     def __hash__(self) -> int:
-        return hash(self._plaintext_bytes())
+        return hash(
+            _reconstruct(
+                object.__getattribute__(self, "_buf"),
+                object.__getattribute__(self, "_pad"),
+            )
+        )
 
     # Block attribute setting from outside
     def __setattr__(self, _name: str, _value: object) -> None:
@@ -367,7 +394,11 @@ class SecretString:
         from ranbval_sdk.crypto.audit import record_access
 
         record_access(label)
-        return _ProtectedStr(self._plaintext_bytes().decode("utf-8"))
+        plaintext = _reconstruct(
+            object.__getattribute__(self, "_buf"),
+            object.__getattribute__(self, "_pad"),
+        )
+        return _ProtectedStr(plaintext.decode("utf-8"))
 
     def __del__(self) -> None:
         try:

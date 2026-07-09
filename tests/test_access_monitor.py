@@ -87,6 +87,26 @@ def test_iteration_not_flagged_when_monitor_off():
     assert "".join(ch for ch in val) == "sk-x"  # must not raise / must work
 
 
+def test_buffer_read_detected(monitor_events):
+    # Naive s._buf / s._pad access (a reveal-gate/monitor bypass) is now flagged.
+    s = SecretString("sk-secret", label="DB")
+    _ = s._buf
+    assert any(e.get("method") == "buffer_read" for e in monitor_events)
+
+
+def test_plaintext_bytes_method_removed():
+    # The convenience _plaintext_bytes() reveal method must no longer exist.
+    s = SecretString("sk-secret")
+    assert not hasattr(s, "_plaintext_bytes")
+
+
+def test_explicit_getattribute_bypass_is_silent(monitor_events):
+    # Honest floor: object.__getattribute__(s,'_buf') bypasses the class → undetectable.
+    s = SecretString("sk-secret")
+    _ = object.__getattribute__(s, "_buf")
+    assert not any(e.get("method") == "buffer_read" for e in monitor_events)
+
+
 def test_uninstall_stops_notifications():
     events: list[dict] = []
     install_access_monitor(on_event=events.append, watch_exfil=False)
