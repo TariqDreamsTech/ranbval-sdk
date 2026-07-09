@@ -116,6 +116,8 @@ OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
 | `safe_decrypt()` | Decrypts a vault token string → `SecretString` |
 | `decrypt_key()` | Reads an env var and decrypts it in one call |
 | `SecretString` | Wrapper that blocks all display paths — value only via `.use()` |
+| `require_reveal_scope()` / `reveal_scope()` | Restrict a secret so `.use()` works only inside an approved block |
+| `install_access_monitor()` | Detect & report suspicious secret access / possible exfiltration |
 | `proxy_request()` | Route an HTTP request through the Ranbval proxy (key injected server-side) |
 | `emit_telemetry()` | Record a **custom** usage event (basic usage is auto-reported on every `decrypt_key()`) |
 | `get_audit_log()` | Return the in-process audit log list |
@@ -490,6 +492,25 @@ clear_audit_log()
 assert get_audit_log() == []
 ```
 
+`audit_scope()` captures just the accesses inside a `with` block (handy for tests): `with audit_scope() as accesses: ...` then inspect `accesses`. `install_access_monitor()` / `uninstall_access_monitor()` turn live suspicious-access detection on and off (see [Trusted-party controls](#trusted-party-controls-restrict--detect)).
+
+---
+
+## Exceptions
+
+Every error derives from `RanbvalError`; each also subclasses the built-in it replaces, so existing `except ValueError` / `except KeyError` / `except PermissionError` code keeps working. Each carries a machine-readable `.code` and a `.context` dict.
+
+| Exception | Also a | Raised when |
+|---|---|---|
+| `RanbvalDecryptError` | `ValueError` | wrong project secret, corrupt/expired token |
+| `RanbvalConfigError` | `ValueError` | env var/secret missing, wrong section (`proxy_only`, `not_a_public_key`, `reveal_out_of_scope`) |
+| `MissingKeyError` | `KeyError` | attribute/item access to an absent key |
+| `RepoNotAllowedError` | `PermissionError` | git remote not in the project allowlist |
+| `RepoPolicyError` | `PermissionError` | repo policy couldn't be loaded/verified |
+| `ProxyError` | `RuntimeError` | the secure proxy rejected the request or was unreachable |
+
+The `SecretProvider` protocol types anything that can `reveal(name) -> str` (e.g. `Vault`).
+
 ---
 
 ## Three sections: `[public]` · `[secrets]` · `[proxy]`
@@ -569,6 +590,62 @@ from ranbval_sdk import env
 env.public("DATABASE_URL")     # -> plain str
 env.public("OPENAI_API_KEY")   # -> raises (declared [proxy]) — use proxy_request()
 ```
+
+---
+
+## Trusted-party controls: restrict & detect
+
+For a value your app **must** decrypt locally (a DB password, a signing key) but that you don't
+want an engineer to read from anywhere but one approved place. Once plaintext exists in a
+process, in-process code can always reach it — so these tools **restrict** where it's revealed
+and **detect** attempts, rather than promising the impossible ("hide it from your own code").
+
+### Reveal scopes — `.use()` only at the approved line
+
+```python
+from ranbval_sdk import require_reveal_scope, reveal_scope, decrypt_key
+
+require_reveal_scope("DATABASE_PASSWORD")          # once, at startup
+
+# The ONLY place its plaintext may be produced:
+with reveal_scope("DATABASE_PASSWORD"):
+    conn = psycopg2.connect(password=decrypt_key("DATABASE_PASSWORD").use())
+
+# Anywhere else — an engineer can't extract it:
+decrypt_key("DATABASE_PASSWORD").use()
+# → RanbvalConfigError: may only be revealed inside `with reveal_scope("DATABASE_PASSWORD")`
+```
+
+`reveal_scope("NAME")` becomes an explicit, greppable marker you can enforce in CI ("this token
+must appear in exactly one file"). It is thread-local — a scope open on one thread never permits
+a reveal on another.
+
+### Access monitor — detect suspicious access / exfiltration
+
+```python
+from ranbval_sdk import install_access_monitor
+
+install_access_monitor()                    # signals go to the Live Monitor
+# or handle them yourself:
+install_access_monitor(on_event=lambda e: log.warning("secret access", **e))
+```
+
+It fires an event when a secret is accessed or manipulated in a way that signals extraction:
+
+| Signal | Fires when |
+|---|---|
+| `secret.suspicious_access` | `.use()` from `python -c` / a REPL / a notebook (not your app) |
+| `secret.possible_exfil` (`iteration`) | `''.join(ch for ch in key.use())` / `list(...)` / a comprehension |
+| `secret.possible_exfil` (`encode`) | `key.use().encode()` |
+| `secret.possible_exfil` (`file_write` / `subprocess`) | a file write or subprocess right after a `.use()` |
+
+The real value is still returned (nothing legitimate breaks — an SDK never iterates an API key,
+and f-strings build headers via `__format__`, which is not flagged).
+
+**Honest limit.** These *restrict and detect*; they do not make in-process extraction impossible.
+A determined insider can still call `str.__str__` on a revealed value or read both memory slots —
+unpreventable in-process for any tool. The one true "value never on the client" answer is the
+[proxy](#proxy_request) (real key decrypted server-side, never returned).
 
 ---
 
