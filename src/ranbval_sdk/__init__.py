@@ -64,7 +64,7 @@ from ranbval_sdk.exceptions import (
 from ranbval_sdk.integrations.proxy import aproxy_request, proxy_request
 from ranbval_sdk.telemetry import aemit_telemetry, emit_telemetry, track, tracked
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 
 __all__ = [
     # Config

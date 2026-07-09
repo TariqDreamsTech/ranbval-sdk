@@ -4,6 +4,19 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [2.1.1] - 2026-07-09
+
+### Fixed
+- **`proxy_token()` is now section-aware.** It previously only checked the token *format*
+  (a `ranbval.*` value), so it would happily return a token for a key declared under
+  `[secrets]` or `[public]`. It now refuses those — a `[secrets]` key must be read with
+  `decrypt_key().use()`, a `[public]` key with `public()` — which catches misuse such as
+  passing a `[secrets]` database password to the HTTP proxy. `[proxy]` keys and unlabelled
+  `ranbval.*` tokens are still accepted. This makes all three accessors own their section
+  (`public()` → `[public]`, `decrypt_key()` → `[secrets]`, `proxy_token()` → `[proxy]`).
+
+---
+
 ## [2.1.0] - 2026-07-09
 
 ### Added
