@@ -52,7 +52,9 @@ from ranbval_sdk.crypto import (
     clear_audit_log,
     decrypt_key,
     get_audit_log,
+    is_enforced,
     safe_decrypt,
+    set_enforcement,
 )
 from ranbval_sdk.exceptions import (
     MissingKeyError,
@@ -60,6 +62,7 @@ from ranbval_sdk.exceptions import (
     RanbvalConfigError,
     RanbvalDecryptError,
     RanbvalError,
+    RanbvalSecurityError,
     RepoNotAllowedError,
     RepoPolicyError,
 )
@@ -73,7 +76,7 @@ from ranbval_sdk.telemetry import (
     uninstall_access_monitor,
 )
 
-__version__ = "2.2.1"
+__version__ = "2.3.0"
 
 __all__ = [
     # Config
@@ -102,6 +105,8 @@ __all__ = [
     "safe_decrypt",
     "decrypt_key",
     "SecretString",
+    "set_enforcement",
+    "is_enforced",
     "get_audit_log",
     "clear_audit_log",
     "audit_scope",
@@ -123,4 +128,5 @@ __all__ = [
     "RepoNotAllowedError",
     "RepoPolicyError",
     "ProxyError",
+    "RanbvalSecurityError",
 ]

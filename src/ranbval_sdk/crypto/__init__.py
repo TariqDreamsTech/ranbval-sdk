@@ -12,7 +12,12 @@ from ranbval_sdk.crypto.audit import (
     record_access,
 )
 from ranbval_sdk.crypto.cipher import decrypt_key, derive_key, safe_decrypt
-from ranbval_sdk.crypto.secret_string import SecretString, install_output_guards
+from ranbval_sdk.crypto.secret_string import (
+    SecretString,
+    install_output_guards,
+    is_enforced,
+    set_enforcement,
+)
 
 __all__ = [
     "safe_decrypt",
@@ -20,6 +25,8 @@ __all__ = [
     "derive_key",
     "SecretString",
     "install_output_guards",
+    "set_enforcement",
+    "is_enforced",
     "get_audit_log",
     "clear_audit_log",
     "audit_scope",

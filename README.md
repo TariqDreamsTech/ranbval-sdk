@@ -118,6 +118,7 @@ OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
 | `SecretString` | Wrapper that blocks all display paths — value only via `.use()` |
 | `require_reveal_scope()` / `reveal_scope()` | Restrict a secret so `.use()` works only inside an approved block |
 | `install_access_monitor()` | Detect & report suspicious secret access / possible exfiltration |
+| `set_enforcement()` / `is_enforced()` | Toggle strict mode — extraction attempts raise `RanbvalSecurityError` (on by default) |
 | `proxy_request()` | Route an HTTP request through the Ranbval proxy (key injected server-side) |
 | `emit_telemetry()` | Record a **custom** usage event (basic usage is auto-reported on every `decrypt_key()`) |
 | `get_audit_log()` | Return the in-process audit log list |
@@ -620,7 +621,44 @@ decrypt_key("DATABASE_PASSWORD").use()
 must appear in exactly one file"). It is thread-local — a scope open on one thread never permits
 a reveal on another.
 
+### Enforcement — extraction attempts raise (strict by default)
+
+As of **2.3.0**, the naive in-memory extraction vectors don't just get reported — they **raise
+`RanbvalSecurityError`**, so a script trying to steal the value fails loudly instead of walking
+off with it:
+
+```python
+key = decrypt_key("OPENAI_API_KEY")
+val = key.use()
+
+client = OpenAI(api_key=key.use())    # ✅ correct — pass it straight in
+f"Bearer {val}"                        # ✅ works (SDK header building)
+"Bearer " + val                        # ✅ works (concatenation)
+
+"".join(c for c in val)                # ❌ RanbvalSecurityError (iteration)
+val.encode()                           # ❌ RanbvalSecurityError (encode)
+val[:]  /  val[0]                       # ❌ RanbvalSecurityError (slice / index)
+str(val)  /  print(val)  /  "%s" % val  # ❌ RanbvalSecurityError (str/display)
+some_secret._buf                       # ❌ RanbvalSecurityError (buffer read)
+object.__getattribute__(s, "_buf")     # ❌ RanbvalSecurityError (honeypot property)
+```
+
+> `str(val)` **raises** under enforcement (loud) instead of returning `[ranbval:secret]`; with
+> `set_enforcement(False)` it masks as before. `repr(val)` always stays masked (so error
+> reporters and debuggers don't crash).
+
+If a legitimate library trips it (an AWS SigV4 signer or a DB driver that must `.encode()` the
+credential), turn enforcement off process-wide:
+
+```python
+from ranbval_sdk import set_enforcement
+set_enforcement(False)   # back to detect + notify (value returned, event still fires)
+```
+
 ### Access monitor — detect suspicious access / exfiltration
+
+With enforcement **off**, the same vectors are *detected and reported* instead of blocked (and
+the access monitor always adds context — REPL use, file-write correlation — regardless):
 
 ```python
 from ranbval_sdk import install_access_monitor
@@ -632,20 +670,35 @@ install_access_monitor(on_event=lambda e: log.warning("secret access", **e))
 
 It fires an event when a secret is accessed or manipulated in a way that signals extraction:
 
-| Signal | Fires when |
-|---|---|
-| `secret.suspicious_access` | `.use()` from `python -c` / a REPL / a notebook (not your app) |
-| `secret.possible_exfil` (`iteration`) | `''.join(ch for ch in key.use())` / `list(...)` / a comprehension |
-| `secret.possible_exfil` (`encode`) | `key.use().encode()` |
-| `secret.possible_exfil` (`file_write` / `subprocess`) | a file write or subprocess right after a `.use()` |
+| Signal | Fires when | Enforced (raises)? |
+|---|---|---|
+| `secret.suspicious_access` | `.use()` from `python -c` / a REPL / a notebook (not your app) | no — reported only |
+| `secret.possible_exfil` (`iteration`) | `''.join(ch for ch in key.use())` / `list(...)` / a comprehension | **yes** |
+| `secret.possible_exfil` (`encode`) | `key.use().encode()` | **yes** |
+| `secret.possible_exfil` (`slice`) | `val[:]` / `val[0]` / any indexing of a revealed value | **yes** |
+| `secret.possible_exfil` (`buffer_read`) | `s._buf` / `s._pad` — including via `object.__getattribute__` (honeypot properties) | **yes** |
+| `secret.possible_exfil` (`file_write` / `subprocess`) | a file write or subprocess right after a `.use()` | no — reported only |
 
-The real value is still returned (nothing legitimate breaks — an SDK never iterates an API key,
-and f-strings build headers via `__format__`, which is not flagged).
+Nothing legitimate breaks — an SDK never iterates or slices an API key, and f-strings build
+headers through a base-`str` path that is not flagged.
 
-**Honest limit.** These *restrict and detect*; they do not make in-process extraction impossible.
-A determined insider can still call `str.__str__` on a revealed value or read both memory slots —
-unpreventable in-process for any tool. The one true "value never on the client" answer is the
-[proxy](#proxy_request) (real key decrypted server-side, never returned).
+**Honest limit (what still can't be blocked).** Enforcement *raises the bar* — it turns silent
+theft into a loud, alerting crash, and now catches the naive `str()`/`_buf`/slice/iterate
+spellings — but it does **not** make in-process extraction impossible. Two floors remain, and we
+deliberately do **not** fake-guard them:
+
+- **`str.__str__(val)`** (and other base-`str` methods: `str.__getitem__(val, ...)`,
+  `str.encode(val)`, and concatenation `"x" + val`) return the real value. The built-in `str`
+  type is immutable — CPython won't let any library override it — so these cannot be intercepted,
+  and **the SDK depends on them**: `OpenAI(api_key=key.use())` only works because the value *is*
+  a real string that libraries can format/concatenate into a request. A value the SDK can use is
+  a value any in-process code can read. That's the fundamental trade-off, not a missing feature.
+- **`object.__getattribute__(s, "_b")`** still reads the real (XOR-masked) buffer slot. Ranbval
+  is open source, so anyone who reads this file finds the slot name. Renaming it again would only
+  move the same hole.
+
+The one true "value never on the client" answer is the [proxy](#proxy_request) — the real key is
+decrypted server-side and never returned to your process at all.
 
 ---
 

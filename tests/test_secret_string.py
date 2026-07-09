@@ -3,17 +3,27 @@
 import json
 import unittest
 
-from ranbval_sdk import SecretString
+from ranbval_sdk import RanbvalSecurityError, SecretString, set_enforcement
 
 
 class TestLeakBlocking(unittest.TestCase):
     def setUp(self):
         self.s = SecretString("top-secret-value")
 
-    def test_str_blocked(self):
-        self.assertEqual(str(self.s), "[ranbval:secret]")
+    def test_str_raises_under_enforcement(self):
+        # Strict default: str()/print() raise instead of masking.
+        with self.assertRaises(RanbvalSecurityError):
+            str(self.s)
+
+    def test_str_masks_when_enforcement_off(self):
+        set_enforcement(False)
+        try:
+            self.assertEqual(str(self.s), "[ranbval:secret]")
+        finally:
+            set_enforcement(True)
 
     def test_repr_blocked(self):
+        # repr stays masked even under enforcement (Sentry/debugger safety).
         self.assertEqual(repr(self.s), "SecretString(***)")
 
     def test_fstring_blocked(self):
@@ -47,12 +57,12 @@ class TestLeakBlocking(unittest.TestCase):
 class TestByteArrayBackend(unittest.TestCase):
     def test_backend_is_bytearray(self):
         s = SecretString("hello")
-        buf = object.__getattribute__(s, "_buf")
+        buf = object.__getattribute__(s, "_b")
         self.assertIsInstance(buf, bytearray)
 
     def test_wipe_zeroes_memory(self):
         s = SecretString("hello")
-        buf = object.__getattribute__(s, "_buf")
+        buf = object.__getattribute__(s, "_b")
         s.wipe()
         # Every byte must be zero after wipe
         self.assertTrue(all(b == 0 for b in buf))
@@ -77,7 +87,7 @@ class TestContextManager(unittest.TestCase):
 
     def test_exit_wipes_memory(self):
         s = SecretString("my-api-key")
-        buf = object.__getattribute__(s, "_buf")
+        buf = object.__getattribute__(s, "_b")
         with s:
             pass
         self.assertTrue(all(b == 0 for b in buf))
@@ -91,7 +101,7 @@ class TestContextManager(unittest.TestCase):
 
     def test_wipe_on_exception_in_block(self):
         s = SecretString("my-api-key")
-        buf = object.__getattribute__(s, "_buf")
+        buf = object.__getattribute__(s, "_b")
         try:
             with s:
                 raise ValueError("simulated error")

@@ -140,8 +140,11 @@ def test_protectedstr_blocks_pickle_but_allows_sdk_use():
     x = SecretString("sk-super-secret").use()
     # SDK header construction must keep working
     assert f"Bearer {x}" == "Bearer sk-super-secret"
-    # display paths masked
-    assert str(x) == "[ranbval:secret]"
+    # display paths raise under enforcement (strict default)
+    from ranbval_sdk import RanbvalSecurityError
+
+    with pytest.raises(RanbvalSecurityError):
+        str(x)
     # copy allowed (immutable str), pickle refused (would carry plaintext)
     assert copy.copy(x) is not None
     with pytest.raises(TypeError):
@@ -149,12 +152,20 @@ def test_protectedstr_blocks_pickle_but_allows_sdk_use():
 
 
 def test_secretstring_masks_percent_and_format():
-    from ranbval_sdk import SecretString
+    from ranbval_sdk import RanbvalSecurityError, SecretString, set_enforcement
 
     s = SecretString("sk-super-secret")
-    assert "%s" % s == "[ranbval:secret]"  # noqa: UP031 — deliberately testing %-format masking
+    # Under enforcement, str-based display (str()/'%s') raises; f-string/format stays masked.
+    with pytest.raises(RanbvalSecurityError):
+        _ = "%s" % s  # noqa: UP031 — deliberately testing %-format under enforcement
     assert f"{s}" == "[ranbval:secret]"
     assert "sk-super" not in repr(s)
+    # With enforcement off, %-format masks as before.
+    set_enforcement(False)
+    try:
+        assert "%s" % s == "[ranbval:secret]"  # noqa: UP031
+    finally:
+        set_enforcement(True)
 
 
 def test_secretstring_buffer_is_obfuscated():
@@ -162,7 +173,7 @@ def test_secretstring_buffer_is_obfuscated():
     from ranbval_sdk import SecretString
 
     s = SecretString("Ahsan07248988@", label="DB")
-    raw = bytes(object.__getattribute__(s, "_buf"))
+    raw = bytes(object.__getattribute__(s, "_b"))
     assert raw != b"Ahsan07248988@"
     assert b"Ahsan" not in raw
     assert s.use() == "Ahsan07248988@"  # but .use() still reconstructs the real value
@@ -176,7 +187,7 @@ def test_secretstring_eq_hash_across_pads():
     a, b, c = SecretString("same"), SecretString("same"), SecretString("different")
     assert a == b and a != c
     assert hash(a) == hash(b)
-    assert bytes(object.__getattribute__(a, "_buf")) != bytes(object.__getattribute__(b, "_buf"))
+    assert bytes(object.__getattribute__(a, "_b")) != bytes(object.__getattribute__(b, "_b"))
 
 
 # --------------------------------------------------------------------------- #

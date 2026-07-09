@@ -98,6 +98,21 @@ class ProxyError(RanbvalError, RuntimeError):
     default_code = "proxy_error"
 
 
+class RanbvalSecurityError(RanbvalError, PermissionError):
+    """A revealed secret was manipulated in a way that signals in-memory extraction
+    (char-by-char iteration, ``.encode()`` to bytes, or a direct read of the internal
+    buffer) while enforcement is on. Raised to turn silent theft into a loud failure.
+
+    This is a **naive-attacker deterrent, not a guarantee** — once ``.use()`` returns a real
+    ``str``, the base ``str`` methods (``str.__str__(val)``, ``str.__getitem__(val, ...)``) and
+    the real buffer slot (``object.__getattribute__(s, "_b")``) still reach the plaintext
+    in-process and cannot be blocked. Only ``[proxy]`` secrets (plaintext never enters the client)
+    are absolute. Disable with ``set_enforcement(False)`` if a legitimate library trips it.
+    """
+
+    default_code = "secret_extraction_blocked"
+
+
 __all__ = [
     "RanbvalError",
     "RanbvalDecryptError",
@@ -106,4 +121,5 @@ __all__ = [
     "RepoNotAllowedError",
     "RepoPolicyError",
     "ProxyError",
+    "RanbvalSecurityError",
 ]

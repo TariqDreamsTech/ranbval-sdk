@@ -61,7 +61,10 @@ def derive_key(password: str, salt_str: str) -> bytes:
         salt=salt,
         iterations=PBKDF2_ITERATIONS,
     )
-    return kdf.derive(password.encode())
+    # The project secret arrives as a _ProtectedStr (from get_project_key → .use()). Call the
+    # base str.encode directly so this SDK-internal key derivation is not tripped by extraction
+    # enforcement — same deliberate-internal-read pattern the value type uses elsewhere.
+    return kdf.derive(str.encode(password))
 
 
 def _enforce_repo_allowlist_if_configured(client_salt: str) -> None:

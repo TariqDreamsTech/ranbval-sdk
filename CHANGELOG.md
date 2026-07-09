@@ -4,6 +4,46 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [2.3.0] - 2026-07-09
+
+Detection → **enforcement**. The extraction vectors 2.2.x only *reported* now **raise** by default.
+
+### Added
+- **Extraction enforcement, strict by default.** When a revealed value is manipulated in a way
+  that signals in-memory theft, the SDK now raises `RanbvalSecurityError` instead of silently
+  handing over the plaintext:
+  - character-by-character **iteration** — `''.join(c for c in key.use())`, `list(...)`, comprehensions
+  - **`.encode()`** to raw bytes
+  - **slicing / indexing** — `val[:]`, `val[0]`, `val[1:5]`
+  - a **buffer read** — `s._buf` / `s._pad`, now **including** the `object.__getattribute__(s, "_buf")`
+    form that bypassed the class in 2.2.x (`_buf`/`_pad` are now honeypot properties; the real
+    bytes live in the private `_b`/`_p` slots)
+  - **`str()` / `print()` / `"%s" %`** — these now raise (loud) instead of returning the
+    `[ranbval:secret]` mask. `repr()` still masks (so Sentry/debuggers don't crash), and with
+    `set_enforcement(False)` `str()` masks as before.
+
+  Legitimate paths are untouched: `f"Bearer {key.use()}"`, `"Bearer " + key.use()` concatenation,
+  `.format()`, and the SDK's own internal decryption all keep working.
+- **`set_enforcement(enabled)` / `is_enforced()`** — flip enforcement off process-wide if a
+  legitimate library trips it (e.g. an AWS SigV4 signer or DB driver that must `.encode()` the
+  credential). Off = the previous *detect + notify* behaviour.
+- **`RanbvalSecurityError`** (subclass of `RanbvalError` + `PermissionError`), code
+  `secret_extraction_blocked`, with `context["method"]` = `iteration` / `encode` / `slice` /
+  `str` / `buffer_read`.
+
+### Honest limit (unchanged)
+Enforcement is a **naive-attacker deterrent, not a guarantee** — it turns silent theft into a
+loud, alerting crash, and now catches the `str()`/`_buf`/slice/iterate spellings. Two floors
+remain, and we deliberately do **not** fake-guard them: **the base `str` methods**
+(`str.__str__(val)`, `str.__getitem__(val, ...)`, `str.encode(val)`, and `"x" + val`
+concatenation) — the built-in `str` type is immutable so no library can override them, *and the
+SDK depends on them* (a value libraries can format into a request is a value any code can read);
+and **`object.__getattribute__(s, "_b")`** (the real slot, findable by anyone reading this
+open-source file). The only absolute protection remains the **`[proxy]`** section, where the
+plaintext never enters the client process.
+
+---
+
 ## [2.2.1] - 2026-07-09
 
 ### Changed / Security
