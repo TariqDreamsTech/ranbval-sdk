@@ -4,6 +4,29 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [2.1.0] - 2026-07-09
+
+### Added
+- **`[proxy]` section** — a third `.ranbval` section for secrets whose plaintext must **never**
+  reach the client. `decrypt_key()` **refuses** a `[proxy]` key (`RanbvalConfigError`, code
+  `proxy_only`); the value is usable only via `proxy_request()`, where the real key is decrypted
+  and injected on Ranbval's server. New helpers `proxy_token("NAME")` (returns the raw encrypted
+  token to pass to the proxy) and `is_proxy("NAME")`. Header aliases: `[proxy]` / `[proxy-only]` /
+  `[sealed]`. `public()` also refuses `[proxy]` keys, and `load_ranbval()` warns if a `[proxy]`
+  value is plaintext.
+
+  The three sections now express a visibility ladder:
+  - `[public]` — plaintext, anyone may read (e.g. shown in a UI).
+  - `[secrets]` — encrypted at rest; the app *can* decrypt and view/use it at runtime.
+  - `[proxy]` — encrypted; plaintext never reaches the client (HTTP API keys, Stripe keys).
+
+  Combine `[proxy]` with **not shipping `RANBVAL_PROJECT_SECRET` to that client** and it is
+  cryptographically impossible for that environment to produce the plaintext at all.
+
+  Fully backward compatible — sections remain optional.
+
+---
+
 ## [2.0.0] - 2026-07-08
 
 ### Removed (breaking)

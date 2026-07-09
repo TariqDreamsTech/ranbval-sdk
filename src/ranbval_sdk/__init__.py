@@ -9,7 +9,7 @@ Public API, grouped by concern (each name re-exported from its home subpackage):
   ``find_ranbval_file``, ``find_ranbval_directory``, ``resolve_ranbval_mode``.
 - **Access** (:mod:`ranbval_sdk.config.access`) — ``Vault``, ``env``, ``inject``,
   ``secrets``, ``iter_secrets``, ``public``, ``public_config``, ``is_public``,
-  ``Secret``, ``SecretConfig``, ``SecretProvider``.
+  ``is_proxy``, ``proxy_token``, ``Secret``, ``SecretConfig``, ``SecretProvider``.
 - **Crypto** (:mod:`ranbval_sdk.crypto`) — ``safe_decrypt``, ``decrypt_key``,
   ``SecretString``, ``get_audit_log``, ``clear_audit_log``, ``audit_scope``.
 - **Telemetry** (:mod:`ranbval_sdk.telemetry`) — ``emit_telemetry``, ``aemit_telemetry``,
@@ -34,9 +34,11 @@ from ranbval_sdk.config import (
     find_ranbval_file,
     get_project_key,
     inject,
+    is_proxy,
     is_public,
     iter_secrets,
     load_ranbval,
+    proxy_token,
     public,
     public_config,
     resolve_ranbval_mode,
@@ -62,7 +64,7 @@ from ranbval_sdk.exceptions import (
 from ranbval_sdk.integrations.proxy import aproxy_request, proxy_request
 from ranbval_sdk.telemetry import aemit_telemetry, emit_telemetry, track, tracked
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 __all__ = [
     # Config
@@ -80,6 +82,8 @@ __all__ = [
     "public",
     "public_config",
     "is_public",
+    "is_proxy",
+    "proxy_token",
     "Secret",
     "SecretConfig",
     "SecretProvider",

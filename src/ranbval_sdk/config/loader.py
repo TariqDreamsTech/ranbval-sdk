@@ -51,12 +51,14 @@ _SECTION_RE = re.compile(r"^\[\s*(?P<name>[A-Za-z0-9_-]+)\s*\]$")
 
 
 def _section_kind(header: str) -> str | None:
-    """Map a ``[section]`` header to ``"public"`` / ``"secret"``, or ``None`` if unrecognised."""
+    """Map a ``[section]`` header to ``"public"`` / ``"secret"`` / ``"proxy"``, or ``None``."""
     name = header.lower()
     if name in manifest.PUBLIC_SECTIONS:
         return "public"
     if name in manifest.SECRET_SECTIONS:
         return "secret"
+    if name in manifest.PROXY_SECTIONS:
+        return "proxy"
     return None  # unknown header — keys under it stay unlabelled (auto-detect)
 
 
@@ -162,6 +164,13 @@ def _warn_declaration_mismatches(values: dict[str, str], kinds: dict[str, str]) 
                 f"{key!r} is declared under [secrets] but its value is plaintext "
                 "(not a 'ranbval.*' token), so it will not be decrypted. "
                 "Move it to [public] or replace it with a vault token.",
+                stacklevel=3,
+            )
+        elif kind == "proxy" and value and not value.startswith("ranbval."):
+            warnings.warn(
+                f"{key!r} is declared under [proxy] but its value is plaintext "
+                "(not a 'ranbval.*' token). A [proxy] secret must be an encrypted vault "
+                "token — its plaintext is only ever injected server-side via the proxy.",
                 stacklevel=3,
             )
 

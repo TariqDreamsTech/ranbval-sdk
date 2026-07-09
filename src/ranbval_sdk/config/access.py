@@ -274,9 +274,9 @@ def iter_secrets(*, mode: str | None = None) -> Iterator[tuple[str, SecretString
 def _lookup_public(name: str, default: Any) -> str:
     """The single place that enforces the public-access policy (env assumed loaded).
 
-    A key declared ``[secrets]`` — or any ``ranbval.*`` token value — is **never** returned
-    here; both raise. This is what guarantees a secret can never leak through a public path,
-    no matter which surface (function or ``Vault`` method) the caller used.
+    A key declared ``[secrets]`` or ``[proxy]`` — or any ``ranbval.*`` token value — is
+    **never** returned here; all raise. This is what guarantees a secret can never leak
+    through a public path, no matter which surface (function or ``Vault`` method) was used.
     """
     from ranbval_sdk.config import manifest
 
@@ -284,6 +284,12 @@ def _lookup_public(name: str, default: Any) -> str:
         raise RanbvalConfigError(
             f"{name!r} is declared under [secrets]; use decrypt_key({name!r}) instead. "
             "public() only returns plaintext configuration.",
+            code="not_a_public_key",
+        )
+    if manifest.is_proxy(name):
+        raise RanbvalConfigError(
+            f"{name!r} is declared under [proxy]; its plaintext never reaches the client. "
+            f"Use proxy_request(token=proxy_token({name!r}), ...) instead.",
             code="not_a_public_key",
         )
 
@@ -360,6 +366,46 @@ def is_public(name: str) -> bool:
     from ranbval_sdk.config import manifest
 
     return manifest.is_public(name)
+
+
+def is_proxy(name: str) -> bool:
+    """True when *name* was declared under a ``[proxy]`` section in ``.ranbval``."""
+    from ranbval_sdk.config import manifest
+
+    return manifest.is_proxy(name)
+
+
+def proxy_token(name: str, *, mode: str | None = None) -> str:
+    """Return the raw encrypted ``ranbval.*`` token for a ``[proxy]`` secret.
+
+    ``[proxy]`` secrets are never decrypted on the client — you pass this encrypted token to
+    :func:`~ranbval_sdk.proxy_request`, and Ranbval injects the real key server-side::
+
+        from ranbval_sdk import proxy_request, proxy_token
+        proxy_request(
+            token=proxy_token("OPENAI_API_KEY"),
+            target_url="https://api.openai.com/v1/chat/completions",
+            inject_as="bearer",
+            body={...},
+        )
+
+    The returned value is only the ciphertext token — useless without the project secret and
+    an allowlisted repo, so it is safe to hold and pass around. Raises if the value is not an
+    encrypted ``ranbval.*`` token.
+    """
+    _ensure_env_loaded(mode)
+    raw = os.environ.get(name)
+    if raw is None:
+        raise MissingKeyError(
+            f"{name!r} is not set — did you create it in your .ranbval file?"
+        )
+    if not _is_token(raw):
+        raise RanbvalConfigError(
+            f"{name!r} is not an encrypted 'ranbval.*' token, so it cannot be used via the "
+            "proxy. Put a vault token under [proxy], or read it with public()/decrypt_key().",
+            code="not_a_proxy_token",
+        )
+    return raw
 
 
 # The declarative, class-based API (``Secret`` / ``SecretConfig``) lives in

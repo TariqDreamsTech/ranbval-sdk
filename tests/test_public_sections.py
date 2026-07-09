@@ -133,6 +133,84 @@ def test_vault_public_refuses_secret(sectioned_env):
     assert ei.value.code == "not_a_public_key"
 
 
+_PROXY = """\
+RANBVAL_PROJECT_SECRET=proj-xxx
+
+[public]
+DATABASE_URL=postgresql://localhost/mydb
+
+[secrets]
+DASHBOARD_PASSWORD=ranbval.aa.bb.ahsan
+
+[proxy]
+OPENAI_API_KEY=ranbval.cc.dd.openai
+"""
+
+
+@pytest.fixture
+def proxy_env(tmp_path, monkeypatch, clean_manifest):
+    (tmp_path / ".ranbval").write_text(_PROXY, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    for key in ("DATABASE_URL", "DASHBOARD_PASSWORD", "OPENAI_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    assert load_ranbval() is True
+
+
+def test_proxy_decrypt_key_refused(proxy_env):
+    import ranbval_sdk as r
+
+    with pytest.raises(RanbvalConfigError) as ei:
+        r.decrypt_key("OPENAI_API_KEY")
+    assert ei.value.code == "proxy_only"
+
+
+def test_proxy_public_refused(proxy_env):
+    with pytest.raises(RanbvalConfigError):
+        public("OPENAI_API_KEY")
+
+
+def test_proxy_token_returns_ciphertext(proxy_env):
+    import ranbval_sdk as r
+
+    tok = r.proxy_token("OPENAI_API_KEY")
+    assert tok == "ranbval.cc.dd.openai"
+    assert tok.startswith("ranbval.")
+
+
+def test_proxy_token_refuses_non_token(proxy_env):
+    import ranbval_sdk as r
+
+    with pytest.raises(RanbvalConfigError) as ei:
+        r.proxy_token("DATABASE_URL")
+    assert ei.value.code == "not_a_proxy_token"
+
+
+def test_is_proxy_flags(proxy_env):
+    assert manifest.is_proxy("OPENAI_API_KEY")
+    assert not manifest.is_proxy("DASHBOARD_PASSWORD")
+    assert manifest.is_secret("DASHBOARD_PASSWORD")
+
+
+def test_proxy_alias_sealed(tmp_path, monkeypatch, clean_manifest):
+    (tmp_path / ".ranbval").write_text(
+        "[sealed]\nSTRIPE_KEY=ranbval.ee.ff.stripe\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("STRIPE_KEY", raising=False)
+    load_ranbval()
+    assert manifest.is_proxy("STRIPE_KEY")
+
+
+def test_warns_on_plaintext_under_proxy(tmp_path, monkeypatch, clean_manifest):
+    f = tmp_path / ".ranbval"
+    f.write_text("[proxy]\nBADKEY=just-plaintext\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        load_ranbval(str(f))
+    assert any("BADKEY" in str(w.message) and "[proxy]" in str(w.message) for w in caught)
+
+
 def test_unknown_section_header_is_unlabelled(tmp_path, monkeypatch, clean_manifest):
     f = tmp_path / ".ranbval"
     f.write_text("[weird]\nFOO=bar\n", encoding="utf-8")

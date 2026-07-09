@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v2.0.0`
+# Ranbval SDK `v2.1.0`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
@@ -112,6 +112,7 @@ OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
 | `load_ranbval()` | Merges layered `.ranbval*` files into `os.environ` |
 | `public()` | Read a plaintext (unencrypted) config value — never decrypts |
 | `public_config()` | Dict of every key declared under `[public]` |
+| `proxy_token()` | Raw encrypted token for a `[proxy]` key — pass to `proxy_request()` (never decrypted client-side) |
 | `safe_decrypt()` | Decrypts a vault token string → `SecretString` |
 | `decrypt_key()` | Reads an env var and decrypts it in one call |
 | `SecretString` | Wrapper that blocks all display paths — value only via `.use()` |
@@ -489,38 +490,65 @@ assert get_audit_log() == []
 
 ---
 
-## Public vs. Secret Values
+## Three sections: `[public]` · `[secrets]` · `[proxy]`
 
-Not everything needs encryption. Values like `DATABASE_URL`, `CORS_ORIGINS`, or `PORT` are
-plain config — you *want* them readable and committable. Encrypted vault tokens
-(`OPENAI_API_KEY`, `STRIPE_SECRET_KEY`) are secrets. You can make that split explicit with
-`[public]` and `[secrets]` section headers in `.ranbval`:
+Not every value needs the same protection. Ranbval lets you declare **how visible** each value
+may ever be, using three section headers in `.ranbval`:
+
+| Section | Encrypted at rest? | Can your app read the plaintext? | For |
+|---|---|---|---|
+| **`[public]`** | No | Yes — anyone (safe to show in a UI) | `DATABASE_URL`, `CORS_ORIGINS`, `PORT` |
+| **`[secrets]`** | Yes | **Yes**, at runtime via `decrypt_key().use()` | a password you must display or use in a direct DB/driver connection |
+| **`[proxy]`** | Yes | **No — never.** Usable only through the Ranbval proxy | `OPENAI_API_KEY`, `STRIPE_SECRET_KEY`, any HTTP API key |
 
 ```bash
 # .ranbval
 RANBVAL_PROJECT_SECRET=ranbval-proj-xxx     # (or keep in .ranbval.local)
 
-[public]                                     # plaintext — never decrypted
+[public]                                     # plaintext — anyone may read
 DATABASE_URL=postgresql://localhost/mydb
 CORS_ORIGINS=https://app.example.com,https://admin.example.com
-PORT=8000
 
-[secrets]                                    # encrypted vault tokens
-OPENAI_API_KEY=ranbval.4ii0a022aa.p1GO...ahsan
-STRIPE_SECRET_KEY=ranbval.7cc2b931ff.xYz...stripe
+[secrets]                                    # encrypted; app CAN decrypt & view at runtime
+DASHBOARD_PASSWORD=ranbval.4ii0a022aa.p1GO...ahsan
+
+[proxy]                                      # encrypted; plaintext NEVER reaches the client
+OPENAI_API_KEY=ranbval.7cc2b931ff.xYz...openai
+STRIPE_SECRET_KEY=ranbval.9dd4c012aa.aBc...stripe
 ```
 
 ```python
-from ranbval_sdk import load_ranbval, public, public_config, decrypt_key
+from ranbval_sdk import load_ranbval, public, decrypt_key, proxy_request, proxy_token
 
 load_ranbval()
 
-db      = public("DATABASE_URL")              # -> plain str (never a SecretString)
-origins = public("CORS_ORIGINS").split(",")   # use directly in CORS config
-cfg     = public_config()                     # -> {"DATABASE_URL": ..., "CORS_ORIGINS": ..., "PORT": ...}
+# [public] — plain str, safe to show anywhere
+db = public("DATABASE_URL")
 
-api_key = decrypt_key("OPENAI_API_KEY")       # -> SecretString (decrypted on use)
+# [secrets] — app decrypts & may view/use the plaintext (e.g. show it, or open a DB connection)
+pw = decrypt_key("DASHBOARD_PASSWORD").use()
+
+# [proxy] — plaintext NEVER enters your process; the key is injected server-side
+resp = proxy_request(
+    token=proxy_token("OPENAI_API_KEY"),          # only the encrypted token leaves your code
+    target_url="https://api.openai.com/v1/chat/completions",
+    inject_as="bearer",
+    body={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
+)
 ```
+
+**How the three behave**
+
+- `public("X")` returns plaintext — and **refuses** a `[secrets]` or `[proxy]` key (or any `ranbval.*` token).
+- `decrypt_key("X").use()` returns plaintext for `[secrets]` — and **refuses `[proxy]` keys** (`RanbvalConfigError`, code `proxy_only`): their plaintext must never reach the client.
+- `proxy_token("X")` returns the raw **encrypted** token for `[proxy]` keys, to pass to `proxy_request()` — the real key is decrypted and injected only on Ranbval's server.
+- `is_public("X")` / `is_proxy("X")` report the declared section.
+
+**Why `[proxy]` matters:** once plaintext reaches your process, any code there (including an AI
+agent you gave code execution) can copy it — no library can prevent that. `[proxy]` keys never
+become plaintext on the client, so there is nothing to copy. Pair it with **not shipping
+`RANBVAL_PROJECT_SECRET` to that client** and it is cryptographically impossible for that
+environment to produce the plaintext at all.
 
 **Rules & safety rails**
 
@@ -528,22 +556,16 @@ api_key = decrypt_key("OPENAI_API_KEY")       # -> SecretString (decrypted on us
   exactly as before — `ranbval.*` values are auto-detected as secrets, everything else is plain.
 - Keys **before any header** (or under an unrecognised header) stay *unlabelled* and keep the
   auto-detect behaviour.
-- `public()` **refuses** to return a key declared under `[secrets]`, or any value that looks like
-  an encrypted `ranbval.*` token — use `decrypt_key()` for those.
-- `load_ranbval()` emits a `warning` if a `[public]` value is actually an encrypted token, or a
-  `[secrets]` value is plaintext — catching copy/paste mistakes early.
-- Header aliases: `[public]` = `[plain]` / `[plaintext]` / `[config]`; `[secrets]` = `[secret]` /
-  `[vault]` / `[encrypted]`.
+- `load_ranbval()` **warns** when a value contradicts its section (e.g. plaintext under `[proxy]`).
+- Header aliases: `[public]` = `[plain]`/`[plaintext]`/`[config]`; `[secrets]` = `[secret]`/`[vault]`/`[encrypted]`; `[proxy]` = `[proxy-only]`/`[sealed]`.
 
-The same policy is available on the `Vault` / `env` object, so whichever access style you use,
-a secret can never come out of a public path:
+The same policy is available on the `Vault` / `env` object, so a secret can never come out of a
+public path on any access surface:
 
 ```python
 from ranbval_sdk import env
-
 env.public("DATABASE_URL")     # -> plain str
-env.public("OPENAI_API_KEY")   # -> raises (declared [secrets]) — use env.reveal() / decrypt_key()
-env.public_config()            # -> {name: plaintext} for every [public] key
+env.public("OPENAI_API_KEY")   # -> raises (declared [proxy]) — use proxy_request()
 ```
 
 ---
