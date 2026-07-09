@@ -181,8 +181,28 @@ def test_proxy_token_refuses_non_token(proxy_env):
     import ranbval_sdk as r
 
     with pytest.raises(RanbvalConfigError) as ei:
-        r.proxy_token("DATABASE_URL")
+        r.proxy_token("DATABASE_URL")  # declared [public]
     assert ei.value.code == "not_a_proxy_token"
+
+
+def test_proxy_token_refuses_secrets_key(proxy_env):
+    # A [secrets] key (e.g. a DB password, meant for local decrypt) must NOT be proxied.
+    import ranbval_sdk as r
+
+    with pytest.raises(RanbvalConfigError) as ei:
+        r.proxy_token("DASHBOARD_PASSWORD")
+    assert ei.value.code == "not_a_proxy_token"
+
+
+def test_proxy_token_allows_unlabelled_token(tmp_path, monkeypatch, clean_manifest):
+    # An unlabelled ranbval.* token (no section) is still accepted for proxy use.
+    (tmp_path / ".ranbval").write_text("API=ranbval.aa.bb.x\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("API", raising=False)
+    load_ranbval()
+    import ranbval_sdk as r
+
+    assert r.proxy_token("API") == "ranbval.aa.bb.x"
 
 
 def test_is_proxy_flags(proxy_env):

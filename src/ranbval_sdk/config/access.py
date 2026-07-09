@@ -390,10 +390,30 @@ def proxy_token(name: str, *, mode: str | None = None) -> str:
         )
 
     The returned value is only the ciphertext token — useless without the project secret and
-    an allowlisted repo, so it is safe to hold and pass around. Raises if the value is not an
-    encrypted ``ranbval.*`` token.
+    an allowlisted repo, so it is safe to hold and pass around.
+
+    Section-aware, to match ``public()`` / ``decrypt_key()``: a key declared ``[public]`` or
+    ``[secrets]`` is **refused** (those are read with ``public()`` / ``decrypt_key().use()``).
+    Only ``[proxy]`` keys — or unlabelled ``ranbval.*`` tokens — are accepted. Raises if the
+    value is not an encrypted ``ranbval.*`` token.
     """
+    from ranbval_sdk.config import manifest
+
     _ensure_env_loaded(mode)
+
+    if manifest.is_public(name):
+        raise RanbvalConfigError(
+            f"{name!r} is declared [public]; read it with public({name!r}). "
+            "proxy_token() is only for [proxy] vault tokens.",
+            code="not_a_proxy_token",
+        )
+    if manifest.is_secret(name):
+        raise RanbvalConfigError(
+            f"{name!r} is declared [secrets] — decrypt it locally with decrypt_key({name!r}). "
+            "Move it to [proxy] if its plaintext should never reach the client.",
+            code="not_a_proxy_token",
+        )
+
     raw = os.environ.get(name)
     if raw is None:
         raise MissingKeyError(
