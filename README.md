@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v2.1.1`
+# Ranbval SDK `v2.2.0`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
@@ -431,11 +431,13 @@ decrypt latency, and a **hashed, non-reversible `device_id`** (a truncated SHA-2
 the raw MAC is never sent). The `device_id` is the signal the control plane uses for **leak detection**:
 the same credential appearing on multiple distinct devices/IPs raises an alert in the Live Monitor.
 
-**Privacy controls.**
+**Always on.** Usage reporting is the leak-detection control plane, so it has **no client-side
+off switch** — a control an attacker (or a curious insider) could flip off would defeat the
+purpose. Only a non-reversible salt + operational metadata are sent, never plaintext.
+
+**Privacy control.**
 - `git config user.email` (developer identity) is **not** sent by default. Set `RANBVAL_TELEMETRY_IDENTITY=1`
   to opt in to attaching it (useful for attributing usage to a person on a shared machine).
-- Set `RANBVAL_TELEMETRY_DISABLED=1` to turn usage reporting **off** entirely — every telemetry path
-  becomes a no-op. Decryption and the repo-allowlist check are unaffected.
 
 ---
 
@@ -639,13 +641,12 @@ RANBVAL_PROJECT_SECRET=your_project_secret_from_dashboard
 | `RANBVAL_ENV` | `development` | Active mode for layered config |
 | `RANBVAL_PROJECT_SECRET` | *(required)* | Project secret for `safe_decrypt()` / `decrypt_key()` |
 | `RANBVAL_TELEMETRY_DEBUG` | `0` | `1` = print telemetry errors to stderr |
-| `RANBVAL_TELEMETRY_DISABLED` | `0` | `1` = turn off all usage reporting (decryption still works) |
 | `RANBVAL_TELEMETRY_IDENTITY` | `0` | `1` = opt in to sending `git config user.email` with events |
 
-> **Repo-allowlist enforcement** is always on and controlled by the Ranbval dashboard — there is
-> no client-side flag to skip it. **Usage telemetry** is on by default (so leak detection works),
-> but you can turn it off with `RANBVAL_TELEMETRY_DISABLED=1`. `decrypt_key()` reports each use to
-> the Live Monitor automatically; call `emit_telemetry()` only for richer custom events.
+> **Repo-allowlist enforcement** and **usage telemetry** are both always on and controlled by the
+> Ranbval control plane — there is **no client-side flag to skip either** (a disable switch would
+> let an attacker turn off the very leak detection that catches them). `decrypt_key()` reports each
+> use to the Live Monitor automatically; call `emit_telemetry()` only for richer custom events.
 
 ---
 
@@ -705,7 +706,7 @@ Your Code
 AES-256-GCM encryption with PBKDF2 key derivation (100,000 iterations). The project secret
 never leaves your environment — the decryption itself happens on your machine. The repo
 allowlist check is always on and governed by the Ranbval control plane (no client-side bypass).
-Usage reporting is on by default but can be disabled with `RANBVAL_TELEMETRY_DISABLED=1`.
+Usage reporting is always on (it is the leak-detection control plane; there is no client-side off switch).
 
 **Network requirement:** because the allowlist is verified server-side on every decrypt,
 resolving a vault token requires connectivity to the Ranbval control plane — the same as any

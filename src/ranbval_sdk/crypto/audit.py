@@ -30,6 +30,16 @@ _log: list[AuditEntry] = []
 # How many frames of ranbval_sdk internals to skip when finding the real caller.
 _SDK_PACKAGE = "ranbval_sdk"
 
+# Optional callback fired on every .use() — set by the opt-in access monitor
+# (:mod:`ranbval_sdk.telemetry.monitor`). Never raises into the caller.
+_notifier: object = None
+
+
+def set_access_notifier(fn: object) -> None:
+    """Register (or clear with ``None``) a callback ``fn(label, caller)`` fired on each .use()."""
+    global _notifier
+    _notifier = fn
+
 
 def record_access(label: str) -> None:
     """Record one .use() call. Called internally by SecretString.use()."""
@@ -42,6 +52,11 @@ def record_access(label: str) -> None:
             break
     with _lock:
         _log.append(build_audit_entry(label=label, timestamp=time.time(), caller=caller))
+    if _notifier is not None:
+        try:
+            _notifier(label, caller)
+        except Exception:
+            pass
 
 
 def get_audit_log() -> list[AuditEntry]:

@@ -43,6 +43,8 @@ from __future__ import annotations
 
 import builtins
 import ctypes
+import hmac
+import os
 import sys
 
 
@@ -119,6 +121,25 @@ class _ProtectedStr(str):
         # print(x) (which calls __str__ directly) remains masked.
         return format(self[:], spec)
 
+    def __iter__(self):
+        # Character-by-character iteration is the signature of an in-memory extraction
+        # (``''.join(ch for ch in key.use())``, ``list(key.use())``, a comprehension) — a
+        # legitimate SDK never iterates an API key. We do NOT block it (that would be
+        # futile and breaks nothing legitimate); we REPORT it to the opt-in access monitor
+        # and still yield the real characters, so honest use is unaffected but theft leaves
+        # a trace. f-strings hit __format__ (which slices, not iterates), so no false alarm.
+        _notify_reveal("iteration")
+        return super().__iter__()
+
+    def encode(self, encoding: str = "utf-8", errors: str = "strict") -> bytes:
+        # ``val.encode()`` turns the secret into raw bytes — an extraction path (and how
+        # ``bcrypt.hashpw`` etc. take it). Report it, then return the real bytes. Note: some
+        # signing SDKs (AWS SigV4/HMAC) and DB drivers encode the credential legitimately, so
+        # this signal can be a false positive; it never blocks. (OpenAI-style header building
+        # hits __format__ on a plain str, not this method, so it stays quiet.)
+        _notify_reveal("encode")
+        return super().encode(encoding, errors)
+
     # Serialization is a real accidental-leak path: error reporters (Sentry) pickle locals,
     # celery/multiprocessing pickle task args, disk/redis caches pickle values. Refuse it so
     # the plaintext can never ride out that way. copy() is allowed (str is immutable → self).
@@ -129,7 +150,42 @@ class _ProtectedStr(str):
         return self
 
     def __reduce_ex__(self, protocol: int) -> object:
-        raise TypeError("Ranbval secret cannot be pickled (it would expose the plaintext).")
+        raise TypeError(
+            "Ranbval secret cannot be pickled (it would expose the plaintext)."
+        )
+
+
+# ── Reveal monitor hook ───────────────────────────────────────────────────────
+# Set by the opt-in access monitor (:mod:`ranbval_sdk.telemetry.monitor`). Called
+# with a method name (e.g. "iteration") when a revealed value is manipulated in a way
+# that signals in-memory extraction. ``None`` (default) = zero overhead, never called.
+_reveal_notifier: object = None
+
+
+def set_reveal_notifier(fn: object) -> None:
+    """Register (or clear with ``None``) a callback ``fn(method)`` for reveal-side signals."""
+    global _reveal_notifier
+    _reveal_notifier = fn
+
+
+def _notify_reveal(method: str) -> None:
+    """Fire the reveal-side signal (if a monitor is installed); never raises into the caller."""
+    if _reveal_notifier is not None:
+        try:
+            _reveal_notifier(method)
+        except Exception:
+            pass
+
+
+# Set by :mod:`ranbval_sdk.config.reveal`. Called with the secret's label inside ``.use()``;
+# it raises if that secret is restricted to a reveal scope and we are not inside one.
+_reveal_gate: object = None
+
+
+def set_reveal_gate(fn: object) -> None:
+    """Register (or clear with ``None``) the reveal-scope gate ``fn(label)`` used by ``.use()``."""
+    global _reveal_gate
+    _reveal_gate = fn
 
 
 # ── Output guards ─────────────────────────────────────────────────────────────
@@ -185,27 +241,45 @@ def install_output_guards() -> None:
 
 
 class SecretString:
-    """Holds a decrypted secret in a mutable bytearray; zeroes memory on wipe/context-exit."""
+    """Holds a decrypted secret in memory, XOR-masked with a per-instance random pad.
 
-    __slots__ = ("_buf", "_label", "_wiped")
+    The plaintext is never stored as-is: ``_buf`` holds ``plaintext XOR _pad``, so reading the
+    internal buffer directly (``object.__getattribute__(s, "_buf")``) yields only garbage. To
+    reconstruct the value you must read *both* slots and know the scheme — which pushes any
+    reader back through :meth:`use` (the gated, audited access point). This is bar-raising, not
+    absolute (a determined insider can read both slots); it closes the naive one-slot bypass.
+    """
+
+    __slots__ = ("_buf", "_pad", "_label", "_wiped")
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         raise TypeError("SecretString cannot be subclassed")
 
     def __init__(self, value: str, label: str = "secret") -> None:
-        buf = bytearray(value.encode("utf-8"))
+        raw = value.encode("utf-8")
+        pad = bytearray(os.urandom(len(raw))) if raw else bytearray()
+        buf = bytearray(b ^ p for b, p in zip(raw, pad, strict=True))  # plaintext XOR pad
         _try_mlock(buf)  # pin to RAM — no swap to disk
+        _try_mlock(pad)
         object.__setattr__(self, "_buf", buf)
+        object.__setattr__(self, "_pad", pad)
         object.__setattr__(self, "_label", label)
         object.__setattr__(self, "_wiped", False)
+
+    def _plaintext_bytes(self) -> bytes:
+        """Reconstruct the plaintext bytes from the masked buffer (transient — for use/eq/hash)."""
+        buf = object.__getattribute__(self, "_buf")
+        pad = object.__getattribute__(self, "_pad")
+        return bytes(b ^ p for b, p in zip(buf, pad, strict=True))
 
     # ── Memory wipe ────────────────────────────────────────────────────────
 
     def wipe(self) -> None:
         """Zero the secret bytes in memory and unpin from RAM. After this, use() raises RuntimeError."""
-        buf = object.__getattribute__(self, "_buf")
-        _try_munlock(buf)  # unpin before zeroing
-        buf[:] = b"\x00" * len(buf)
+        for name in ("_buf", "_pad"):
+            b = object.__getattribute__(self, name)
+            _try_munlock(b)  # unpin before zeroing
+            b[:] = b"\x00" * len(b)
         object.__setattr__(self, "_wiped", True)
 
     # ── Context manager — wipes automatically on block exit ───────────────
@@ -236,13 +310,12 @@ class SecretString:
                 other, "_wiped"
             ):
                 return False
-            return object.__getattribute__(self, "_buf") == object.__getattribute__(
-                other, "_buf"
-            )
+            # Deobfuscate both (each has its own pad) and compare in constant time.
+            return hmac.compare_digest(self._plaintext_bytes(), other._plaintext_bytes())
         return NotImplemented
 
     def __hash__(self) -> int:
-        return hash(bytes(object.__getattribute__(self, "_buf")))
+        return hash(self._plaintext_bytes())
 
     # Block attribute setting from outside
     def __setattr__(self, _name: str, _value: object) -> None:
@@ -255,10 +328,14 @@ class SecretString:
         raise TypeError("SecretString cannot be pickled (it would expose the secret).")
 
     def __copy__(self) -> SecretString:
-        raise TypeError("SecretString cannot be copied (it would duplicate the secret).")
+        raise TypeError(
+            "SecretString cannot be copied (it would duplicate the secret)."
+        )
 
     def __deepcopy__(self, memo: object) -> SecretString:
-        raise TypeError("SecretString cannot be deep-copied (it would duplicate the secret).")
+        raise TypeError(
+            "SecretString cannot be deep-copied (it would duplicate the secret)."
+        )
 
     # ── Only explicit access point ─────────────────────────────────────────
 
@@ -281,10 +358,16 @@ class SecretString:
             raise RuntimeError("SecretString.use() has been tampered with")
         if object.__getattribute__(self, "_wiped"):
             raise RuntimeError("SecretString has been wiped and cannot be used again")
+        label = object.__getattribute__(self, "_label")
+        # Reveal gate: if this secret is restricted to explicit reveal scopes, refuse to
+        # produce the plaintext outside one. Lets you allow .use() at exactly one approved
+        # line (e.g. the DB-connect call) and block extraction from anywhere else.
+        if _reveal_gate is not None:
+            _reveal_gate(label)
         from ranbval_sdk.crypto.audit import record_access
 
-        record_access(object.__getattribute__(self, "_label"))
-        return _ProtectedStr(object.__getattribute__(self, "_buf").decode("utf-8"))
+        record_access(label)
+        return _ProtectedStr(self._plaintext_bytes().decode("utf-8"))
 
     def __del__(self) -> None:
         try:

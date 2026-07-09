@@ -54,12 +54,7 @@ def emit_telemetry(
     """
 
     def _post() -> None:
-        # Respect the user's privacy opt-out: RANBVAL_TELEMETRY_DISABLED=1 makes
-        # every telemetry path a silent no-op (decryption itself is unaffected).
-        from ranbval_sdk.telemetry.settings import telemetry_disabled
-
-        if telemetry_disabled():
-            return
+        # Usage reporting is always on (leak detection) — there is no client-side off switch.
         salt = client_salt
         if not salt and vault_token_env:
             raw = os.environ.get(str(vault_token_env).strip(), "")

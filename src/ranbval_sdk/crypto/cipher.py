@@ -125,12 +125,15 @@ def _strip_expiry_and_check_ttl(plaintext: str) -> str:
     return body
 
 
-def safe_decrypt(copy_token: str, project_secret: str) -> SecretString:
+def safe_decrypt(
+    copy_token: str, project_secret: str, *, label: str = "secret"
+) -> SecretString:
     """
     Decrypt a Ranbval vault token using your project secret.
 
     ``project_secret`` is the ``ranbval-proj-…`` key shown once when you create a project
-    (or regenerated from the dashboard under Project Secrets).
+    (or regenerated from the dashboard under Project Secrets). ``label`` names the resulting
+    secret (used by the audit log and by reveal scopes); ``decrypt_key`` passes the env-var name.
 
     Returns a SecretString — the plaintext is NEVER exposed via print/str/repr/logs.
     To actually pass the value to an API or SDK:
@@ -159,7 +162,7 @@ def safe_decrypt(copy_token: str, project_secret: str) -> SecretString:
             code="decrypt_failed",
         ) from e
 
-    return SecretString(_strip_expiry_and_check_ttl(plaintext))
+    return SecretString(_strip_expiry_and_check_ttl(plaintext), label=label)
 
 
 def _migrate_from_env(key: str) -> str:
@@ -252,13 +255,13 @@ def decrypt_key(env_var: str) -> SecretString:
             f"{env_var!r} is not set. Add it to your .ranbval file or environment."
         )
 
-    # Plain (non-vault) key — return as-is
+    # Plain (non-vault) key — return as-is (labelled by env var for audit / reveal scopes)
     if not token.startswith("ranbval."):
-        return SecretString(token)
+        return SecretString(token, label=env_var)
 
     project_secret = _find_project_secret_for(env_var)
     started = time.perf_counter()
-    secret = safe_decrypt(token, project_secret)
+    secret = safe_decrypt(token, project_secret, label=env_var)
     roundtrip_ms = (time.perf_counter() - started) * 1000.0
     _auto_report_usage(env_var, roundtrip_ms)
     return secret
@@ -273,11 +276,6 @@ def _auto_report_usage(env_var: str, roundtrip_ms: float) -> None:
     custom events. Any failure here never affects decryption.
     """
     try:
-        from ranbval_sdk.telemetry.settings import telemetry_disabled
-
-        if telemetry_disabled():
-            return  # user opted out — do not even start the aggregation flusher
-
         from ranbval_sdk.telemetry.client import emit_telemetry, salt_from_ranbval_token
         from ranbval_sdk.telemetry.sampling import usage_sampler
 

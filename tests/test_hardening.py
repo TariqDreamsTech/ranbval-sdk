@@ -157,18 +157,31 @@ def test_secretstring_masks_percent_and_format():
     assert "sk-super" not in repr(s)
 
 
+def test_secretstring_buffer_is_obfuscated():
+    # Reading the internal buffer directly must NOT yield the plaintext (it is XOR-masked).
+    from ranbval_sdk import SecretString
+
+    s = SecretString("Ahsan07248988@", label="DB")
+    raw = bytes(object.__getattribute__(s, "_buf"))
+    assert raw != b"Ahsan07248988@"
+    assert b"Ahsan" not in raw
+    assert s.use() == "Ahsan07248988@"  # but .use() still reconstructs the real value
+    assert len(s) == len("Ahsan07248988@")
+
+
+def test_secretstring_eq_hash_across_pads():
+    # Two equal secrets have different per-instance pads but must still compare/hash equal.
+    from ranbval_sdk import SecretString
+
+    a, b, c = SecretString("same"), SecretString("same"), SecretString("different")
+    assert a == b and a != c
+    assert hash(a) == hash(b)
+    assert bytes(object.__getattribute__(a, "_buf")) != bytes(object.__getattribute__(b, "_buf"))
+
+
 # --------------------------------------------------------------------------- #
-# telemetry privacy switches
+# telemetry: always-on; only the developer-identity opt-in is configurable
 # --------------------------------------------------------------------------- #
-def test_telemetry_disabled_flag(monkeypatch):
-    from ranbval_sdk.telemetry.settings import telemetry_disabled
-
-    monkeypatch.delenv("RANBVAL_TELEMETRY_DISABLED", raising=False)
-    assert telemetry_disabled() is False
-    monkeypatch.setenv("RANBVAL_TELEMETRY_DISABLED", "1")
-    assert telemetry_disabled() is True
-
-
 def test_identity_opt_in_default_off(monkeypatch):
     from ranbval_sdk.telemetry.context import _get_git_email
     from ranbval_sdk.telemetry.settings import identity_opt_in
@@ -178,16 +191,11 @@ def test_identity_opt_in_default_off(monkeypatch):
     assert _get_git_email() is None  # PII not collected without explicit opt-in
 
 
-def test_disabled_telemetry_makes_emit_a_noop(monkeypatch):
-    """With telemetry disabled, emit_telemetry must not attempt any network transport."""
-    monkeypatch.setenv("RANBVAL_TELEMETRY_DISABLED", "1")
-    from ranbval_sdk.telemetry import client
+def test_telemetry_has_no_disable_switch():
+    # Usage reporting is the leak-detection control plane — there is no client off switch.
+    import ranbval_sdk.telemetry.settings as settings
 
-    def _boom(*a, **k):  # pragma: no cover - must never be called
-        raise AssertionError("transport should not be called when telemetry is disabled")
-
-    monkeypatch.setattr(client._transport, "urlopen", _boom)
-    client.emit_telemetry(client_salt="anything", background=False)  # no raise = pass
+    assert not hasattr(settings, "telemetry_disabled")
 
 
 # --------------------------------------------------------------------------- #
@@ -206,8 +214,8 @@ def test_decrypt_key_after_load_ranbval(tmp_path, monkeypatch):
     import ranbval_sdk.crypto.cipher as cipher
     from ranbval_sdk.crypto.cipher import derive_key
 
-    monkeypatch.setenv("RANBVAL_TELEMETRY_DISABLED", "1")
     monkeypatch.setattr(cipher, "_enforce_repo_allowlist_if_configured", lambda salt: None)
+    monkeypatch.setattr(cipher, "_auto_report_usage", lambda *a, **k: None)  # no telemetry in test
 
     secret, salt, real_key = "proj-secret-xyz", "ABCDEFGHIJ", "sk-proj-REAL"
     iv = os.urandom(12)

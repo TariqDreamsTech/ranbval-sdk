@@ -12,6 +12,11 @@ from ranbval_sdk.telemetry.client import (
     salt_from_ranbval_token,
 )
 from ranbval_sdk.telemetry.decorators import track, tracked
+from ranbval_sdk.telemetry.monitor import (
+    classify_context,
+    install_access_monitor,
+    uninstall_access_monitor,
+)
 
 __all__ = [
     "emit_telemetry",
@@ -19,4 +24,7 @@ __all__ = [
     "salt_from_ranbval_token",
     "track",
     "tracked",
+    "install_access_monitor",
+    "uninstall_access_monitor",
+    "classify_context",
 ]

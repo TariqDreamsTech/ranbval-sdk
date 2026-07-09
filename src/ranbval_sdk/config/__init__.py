@@ -26,6 +26,11 @@ from ranbval_sdk.config.loader import (
     load_ranbval,
     resolve_ranbval_mode,
 )
+from ranbval_sdk.config.reveal import (
+    clear_reveal_requirements,
+    require_reveal_scope,
+    reveal_scope,
+)
 
 __all__ = [
     "load_ranbval",
@@ -43,6 +48,9 @@ __all__ = [
     "is_public",
     "is_proxy",
     "proxy_token",
+    "reveal_scope",
+    "require_reveal_scope",
+    "clear_reveal_requirements",
     "Secret",
     "SecretConfig",
     "SecretProvider",

@@ -4,6 +4,62 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [2.2.0] - 2026-07-09
+
+Trusted-party controls: **restrict** where a secret may be revealed, and **detect** when it is.
+
+### Removed
+- **`RANBVAL_TELEMETRY_DISABLED` is gone** — usage reporting is the leak-detection control
+  plane, so it is now **always on with no client-side off switch**. A disable flag would let an
+  attacker (or a curious insider) turn off the very monitoring that catches misuse, which
+  defeats the purpose. The developer-identity opt-in (`RANBVAL_TELEMETRY_IDENTITY=1`, off by
+  default) remains — it only *adds* data (git email), never disables reporting.
+
+### Added
+- **Reveal scopes** — `require_reveal_scope("NAME")` + `with reveal_scope("NAME"): ...`. For a
+  value your app must decrypt locally (a DB password, a signing key) but that you don't want an
+  engineer to read anywhere else: restrict it so `decrypt_key("NAME").use()` returns the
+  plaintext **only inside a `reveal_scope` block** — a `.use()` anywhere else raises
+  `RanbvalConfigError` (`reveal_out_of_scope`). This shrinks the reveal surface from "any line,
+  invisibly" to **one approved, greppable, reviewable block** you can enforce in CI. Thread-local
+  (a scope on one thread never permits a reveal on another). `decrypt_key` / `safe_decrypt` now
+  label the secret with its env-var name so scopes and the audit log can identify it.
+
+  Honest limit: this gates `.use()` (the audited access point); it does not stop a determined
+  insider who bypasses the class (reads the internal buffer, calls `str.__str__`) — unpreventable
+  in-process for any tool. It makes the reveal *restricted and auditable*, not impossible.
+- **Opt-in secret-access monitoring** — `install_access_monitor()`. A trusted party who can
+  decrypt can always extract the plaintext (no library prevents that), so this makes the
+  access **visible and attributable** on your Live Monitor instead:
+  - Every `SecretString.use()` is classified by call context — `app` (a real `.py`),
+    `exec` (`python -c`), `repl` (`<stdin>`), `notebook` (IPython). Anything but `app` is
+    flagged `secret.suspicious_access` (a normal app never reveals a secret from a REPL).
+  - **In-memory extraction is caught too:** `SecretString.use()` returns a `_ProtectedStr`
+    whose `__iter__` and `encode()` are instrumented, so `''.join(ch for ch in key.use())` /
+    `list(...)` / a comprehension (`method="iteration"`) and `key.use().encode()`
+    (`method="encode"`) fire `secret.possible_exfil` **while still returning the real value**
+    (nothing legitimate breaks; f-strings hit `__format__`, not these, so no false alarm —
+    note `encode` can false-positive for HMAC-signing SDKs, and never blocks).
+- **Memory-buffer obfuscation** — `SecretString` now stores the secret XOR-masked with a
+  per-instance random pad, so reading the internal buffer directly
+  (`object.__getattribute__(s, "_buf")`) yields only garbage instead of the plaintext. This
+  closes the naive one-slot bypass and pushes any reader back through the gated, audited
+  `.use()`. Bar-raising, not absolute (a determined insider can read both slots); `len` / `==`
+  / `hash` / `wipe` are unchanged in behaviour.
+  - With `watch_exfil=True` (default), a `sys.addaudithook` also flags a **file write** or a
+    **subprocess** right after a `.use()` as `secret.possible_exfil`.
+  - Signals go to the Live Monitor by default, or to your own `on_event` handler.
+
+  **Honest limits (documented, not sold otherwise):** this is *detection, not prevention*,
+  and *heuristic*. It catches the extraction methods that actually happen — `python -c`/REPL
+  access, character iteration (`join`/`list`/comprehension), write-to-file, pipe-to-subprocess.
+  It does **not** catch every conceivable path (e.g. calling `str.__str__(x)` directly, or
+  reading the internal buffer via `object.__getattribute__`); those need a hardware enclave /
+  OS taint-tracking. It is not a DLP/EDR replacement. New `crypto.audit.set_access_notifier`
+  and `crypto.secret_string.set_reveal_notifier` hooks.
+
+---
+
 ## [2.1.1] - 2026-07-09
 
 ### Fixed

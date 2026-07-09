@@ -41,7 +41,9 @@ from ranbval_sdk.config import (
     proxy_token,
     public,
     public_config,
+    require_reveal_scope,
     resolve_ranbval_mode,
+    reveal_scope,
     secrets,
 )
 from ranbval_sdk.crypto import (
@@ -62,9 +64,16 @@ from ranbval_sdk.exceptions import (
     RepoPolicyError,
 )
 from ranbval_sdk.integrations.proxy import aproxy_request, proxy_request
-from ranbval_sdk.telemetry import aemit_telemetry, emit_telemetry, track, tracked
+from ranbval_sdk.telemetry import (
+    aemit_telemetry,
+    emit_telemetry,
+    install_access_monitor,
+    track,
+    tracked,
+    uninstall_access_monitor,
+)
 
-__version__ = "2.1.1"
+__version__ = "2.2.0"
 
 __all__ = [
     # Config
@@ -84,6 +93,8 @@ __all__ = [
     "is_public",
     "is_proxy",
     "proxy_token",
+    "reveal_scope",
+    "require_reveal_scope",
     "Secret",
     "SecretConfig",
     "SecretProvider",
@@ -99,6 +110,8 @@ __all__ = [
     "aemit_telemetry",
     "track",
     "tracked",
+    "install_access_monitor",
+    "uninstall_access_monitor",
     # Secure proxy
     "proxy_request",
     "aproxy_request",
