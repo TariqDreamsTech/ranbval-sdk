@@ -141,7 +141,7 @@ def install_access_monitor(
     _on_event = on_event
 
     from ranbval_sdk.crypto.audit import set_access_notifier
-    from ranbval_sdk.crypto.secret_string import set_reveal_notifier
+    from ranbval_sdk.crypto.enforcement import set_reveal_notifier
 
     set_access_notifier(_on_use)
     set_reveal_notifier(_on_reveal)  # catches in-memory iteration (join / list / comprehension)
@@ -157,7 +157,7 @@ def uninstall_access_monitor() -> None:
     """Stop classifying access (the audit hook cannot be removed, but goes idle)."""
     global _on_event, _installed
     from ranbval_sdk.crypto.audit import set_access_notifier
-    from ranbval_sdk.crypto.secret_string import set_reveal_notifier
+    from ranbval_sdk.crypto.enforcement import set_reveal_notifier
 
     set_access_notifier(None)
     set_reveal_notifier(None)

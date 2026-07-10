@@ -17,7 +17,7 @@ decrypted lazily and cached per subclass. Both styles resolve through the same
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from ranbval_sdk.config.access import _ensure_env_loaded, _resolve
 from ranbval_sdk.crypto.secret_string import SecretString
@@ -61,8 +61,8 @@ class Secret:
 class SecretConfig:
     """Base for declarative secret config classes; each subclass gets its own cache."""
 
-    _secret_cache: dict[str, Any] = {}
-    _secret_fields: tuple[str, ...] = ()
+    _secret_cache: ClassVar[dict[str, Any]] = {}
+    _secret_fields: ClassVar[tuple[str, ...]] = ()
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)

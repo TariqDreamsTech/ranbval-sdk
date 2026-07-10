@@ -362,7 +362,7 @@ def load_ranbval(
     # protected secret is passed directly. Off by default because patching global builtins
     # is invasive; SecretString already masks itself via __str__/__repr__ without it.
     if guard_stdout:
-        from ranbval_sdk.crypto.secret_string import install_output_guards
+        from ranbval_sdk.crypto.output_guards import install_output_guards
 
         install_output_guards()
 

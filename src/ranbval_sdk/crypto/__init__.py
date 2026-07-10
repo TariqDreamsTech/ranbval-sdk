@@ -2,6 +2,9 @@
 
 - :mod:`~ranbval_sdk.crypto.cipher` — AES-256-GCM vault-token decrypt + project-secret resolution.
 - :mod:`~ranbval_sdk.crypto.secret_string` — the sealed :class:`SecretString` value type.
+- :mod:`~ranbval_sdk.crypto.enforcement` — extraction guards + the reveal-signal notifier.
+- :mod:`~ranbval_sdk.crypto.memory` — best-effort RAM pinning (mlock).
+- :mod:`~ranbval_sdk.crypto.output_guards` — opt-in ``print``/``stdout`` patching.
 - :mod:`~ranbval_sdk.crypto.audit` — in-memory log of every ``SecretString.use()``.
 """
 
@@ -12,12 +15,9 @@ from ranbval_sdk.crypto.audit import (
     record_access,
 )
 from ranbval_sdk.crypto.cipher import decrypt_key, derive_key, safe_decrypt
-from ranbval_sdk.crypto.secret_string import (
-    SecretString,
-    install_output_guards,
-    is_enforced,
-    set_enforcement,
-)
+from ranbval_sdk.crypto.enforcement import is_enforced, set_enforcement
+from ranbval_sdk.crypto.output_guards import install_output_guards
+from ranbval_sdk.crypto.secret_string import SecretString
 
 __all__ = [
     "safe_decrypt",

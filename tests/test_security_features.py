@@ -12,7 +12,7 @@ from ranbval_sdk.crypto import (
     get_audit_log,
     safe_decrypt,
 )
-from ranbval_sdk.crypto.secret_string import _try_mlock
+from ranbval_sdk.crypto.memory import try_mlock
 
 # Repo-allowlist enforcement now always contacts the control plane (no local skip).
 # These unit tests decrypt locally-built tokens with no server, so stub the network
@@ -46,7 +46,7 @@ class TestMlock(unittest.TestCase):
     def test_mlock_does_not_crash(self):
         """mlock should succeed or fail silently — never raise."""
         buf = bytearray(b"secret-value")
-        result = _try_mlock(buf)
+        result = try_mlock(buf)
         self.assertIsInstance(result, bool)
 
     def test_secret_string_init_with_mlock(self):
@@ -63,7 +63,7 @@ class TestMlock(unittest.TestCase):
 
     def test_mlock_empty_buffer_safe(self):
         buf = bytearray(b"")
-        result = _try_mlock(buf)
+        result = try_mlock(buf)
         self.assertFalse(result)
 
 
