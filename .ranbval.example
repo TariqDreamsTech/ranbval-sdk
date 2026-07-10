@@ -1,16 +1,32 @@
-# Copy / split across layered files in your project root (add .ranbval* secrets to .gitignore).
+# Ranbval configuration example.
+#
+# Every variable must start with a CLASS PREFIX that declares how visible its value may be:
+#   PUBLIC_   plaintext config          → public("PUBLIC_…")
+#   SECRET_   encrypted vault token     → decrypt_key("SECRET_…").use()   (decrypted locally)
+#   PROXY_    encrypted vault token     → proxy_token("PROXY_…") + proxy  (plaintext never on client)
+# Exempt (no prefix needed): RANBVAL_* and *_PROJECT_SECRET.
+# An unprefixed key — or a legacy [section] header — is rejected at load time.
+#
+# Files are merged in order (later overrides earlier); add .ranbval*.local to .gitignore:
+#   .ranbval  →  .ranbval.{mode}  →  .ranbval.local  →  .ranbval.{mode}.local
 
-# --- .ranbval (shared defaults, safe to commit if no secrets) ---
-# RANBVAL_HOST=https://ranbval-password-manager.onrender.com
 
-# --- .ranbval.development (RANBVAL_ENV=development or load_ranbval(mode="development")) ---
+# --- .ranbval (shared defaults, safe to commit — no secrets here) ---
+PUBLIC_APP_NAME=my-app
+# RANBVAL_HOST=https://api.ranbval.com
+
+# --- .ranbval.development (RANBVAL_ENV=development, or load_ranbval(mode="development")) ---
 # RANBVAL_HOST=http://127.0.0.1:8006
 
-# --- .ranbval.production (RANBVAL_ENV=production or load_ranbval(mode="production")) ---
+# --- .ranbval.production (RANBVAL_ENV=production, or load_ranbval(mode="production")) ---
 # (override host or keys for prod only)
 
-# --- .ranbval.local (machine-only; never commit) ---
+# --- .ranbval.local (machine-only; NEVER commit) ---
+# Project secret is exempt from the prefix rule; keep it here, not in a committed file.
 RANBVAL_PROJECT_SECRET=your_project_secret_from_dashboard
-OPENAI_API_KEY=ranbval.xxxxxxxx.[BLOB].ahsan
+
+SECRET_OPENAI_KEY=ranbval.xxxxxxxx.[BLOB].ahsan   # decrypt_key("SECRET_OPENAI_KEY").use()
+PROXY_STRIPE_KEY=ranbval.yyyyyyyy.[BLOB].ahsan    # proxy_token("PROXY_STRIPE_KEY") — never decrypted here
+PUBLIC_DATABASE_URL=postgresql://localhost/mydb   # public("PUBLIC_DATABASE_URL")
 
 # Optional: .ranbval.production.local — prod overrides + local secrets
