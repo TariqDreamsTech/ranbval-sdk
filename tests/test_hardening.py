@@ -235,14 +235,14 @@ def test_decrypt_key_after_load_ranbval(tmp_path, monkeypatch):
     token = f"ranbval.{salt}.{blob}.openai"
 
     (tmp_path / ".ranbval").write_text(
-        f"RANBVAL_PROJECT_SECRET={secret}\n[secrets]\nOPENAI_API_KEY={token}\n", encoding="utf-8"
+        f"RANBVAL_PROJECT_SECRET={secret}\nSECRET_OPENAI_API_KEY={token}\n", encoding="utf-8"
     )
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("SECRET_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("RANBVAL_PROJECT_SECRET", raising=False)
     r.load_ranbval()
 
-    assert r.decrypt_key("OPENAI_API_KEY").use() == real_key
+    assert r.decrypt_key("SECRET_OPENAI_API_KEY").use() == real_key
 
 
 # --------------------------------------------------------------------------- #
@@ -253,7 +253,7 @@ def test_load_ranbval_does_not_patch_print_by_default(tmp_path, monkeypatch):
 
     from ranbval_sdk import load_ranbval
 
-    (tmp_path / ".ranbval").write_text("APP_NAME=demo\n", encoding="utf-8")
+    (tmp_path / ".ranbval").write_text("PUBLIC_APP_NAME=demo\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     before = builtins.print
     load_ranbval()

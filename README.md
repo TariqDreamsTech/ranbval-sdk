@@ -86,7 +86,7 @@ load_ranbval()
 
 # 2. Decrypt a vault token — returns a SecretString, never printable.
 #    This also auto-reports the usage to your Live Monitor (no extra code).
-api_key = decrypt_key("OPENAI_API_KEY")
+api_key = decrypt_key("SECRET_OPENAI_KEY")
 
 # 3. Pass directly to the SDK — value is never exposed in logs or prints
 client = openai.OpenAI(api_key=api_key.use())
@@ -100,7 +100,7 @@ response = client.chat.completions.create(
 `.ranbval.local` (never commit this file):
 ```bash
 RANBVAL_PROJECT_SECRET=your_dashboard_project_secret
-OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
+SECRET_OPENAI_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
 ```
 
 ---
@@ -111,8 +111,8 @@ OPENAI_API_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
 |--------|-------------|
 | `load_ranbval()` | Merges layered `.ranbval*` files into `os.environ` |
 | `public()` | Read a plaintext (unencrypted) config value — never decrypts |
-| `public_config()` | Dict of every key declared under `[public]` |
-| `proxy_token()` | Raw encrypted token for a `[proxy]` key — pass to `proxy_request()` (never decrypted client-side) |
+| `public_config()` | Dict of every `PUBLIC_`-prefixed key as `{name: plaintext}` |
+| `proxy_token()` | Raw encrypted token for a `PROXY_` key — pass to `proxy_request()` (never decrypted client-side) |
 | `safe_decrypt()` | Decrypts a vault token string → `SecretString` |
 | `decrypt_key()` | Reads an env var and decrypts it in one call |
 | `SecretString` | Wrapper that blocks all display paths — value only via `.use()` |
@@ -514,31 +514,33 @@ The `SecretProvider` protocol types anything that can `reveal(name) -> str` (e.g
 
 ---
 
-## Three sections: `[public]` · `[secrets]` · `[proxy]`
+## Variable classification: `PUBLIC_` · `SECRET_` · `PROXY_`
 
-Not every value needs the same protection. Ranbval lets you declare **how visible** each value
-may ever be, using three section headers in `.ranbval`:
+Not every value needs the same protection. In Ranbval, **every variable declares its exposure
+class in its own name** via a required prefix — the class is visible everywhere it is referenced
+(the file, `os.environ`, your code), and there are no `[section]` headers to keep in sync.
 
-| Section | Encrypted at rest? | Can your app read the plaintext? | For |
+| Prefix | Encrypted at rest? | Can your app read the plaintext? | For |
 |---|---|---|---|
-| **`[public]`** | No | Yes — anyone (safe to show in a UI) | `DATABASE_URL`, `CORS_ORIGINS`, `PORT` |
-| **`[secrets]`** | Yes | **Yes**, at runtime via `decrypt_key().use()` | a password you must display or use in a direct DB/driver connection |
-| **`[proxy]`** | Yes | **No — never.** Usable only through the Ranbval proxy | `OPENAI_API_KEY`, `STRIPE_SECRET_KEY`, any HTTP API key |
+| **`PUBLIC_`** | No | Yes — anyone (safe to show in a UI) | `PUBLIC_DATABASE_URL`, `PUBLIC_CORS_ORIGINS`, `PUBLIC_PORT` |
+| **`SECRET_`** | Yes | **Yes**, at runtime via `decrypt_key().use()` | a password you must display or use in a direct DB/driver connection |
+| **`PROXY_`** | Yes | **No — never.** Usable only through the Ranbval proxy | `PROXY_OPENAI_KEY`, `PROXY_STRIPE_KEY`, any HTTP API key |
+
+Every key **must** carry one of these prefixes. `RANBVAL_*` and `*_PROJECT_SECRET` are exempt
+(infrastructure). Anything else — or a legacy `[section]` header — raises `RanbvalConfigError` at
+load time.
 
 ```bash
 # .ranbval
-RANBVAL_PROJECT_SECRET=ranbval-proj-xxx     # (or keep in .ranbval.local)
+RANBVAL_PROJECT_SECRET=ranbval-proj-xxx          # exempt (or keep in .ranbval.local)
 
-[public]                                     # plaintext — anyone may read
-DATABASE_URL=postgresql://localhost/mydb
-CORS_ORIGINS=https://app.example.com,https://admin.example.com
+PUBLIC_DATABASE_URL=postgresql://localhost/mydb  # plaintext — anyone may read
+PUBLIC_CORS_ORIGINS=https://app.example.com,https://admin.example.com
 
-[secrets]                                    # encrypted; app CAN decrypt & view at runtime
-DASHBOARD_PASSWORD=ranbval.4ii0a022aa.p1GO...ahsan
+SECRET_DASHBOARD_PASSWORD=ranbval.4ii0a022aa.p1GO...ahsan  # encrypted; app CAN decrypt at runtime
 
-[proxy]                                      # encrypted; plaintext NEVER reaches the client
-OPENAI_API_KEY=ranbval.7cc2b931ff.xYz...openai
-STRIPE_SECRET_KEY=ranbval.9dd4c012aa.aBc...stripe
+PROXY_OPENAI_KEY=ranbval.7cc2b931ff.xYz...openai  # encrypted; plaintext NEVER reaches the client
+PROXY_STRIPE_KEY=ranbval.9dd4c012aa.aBc...stripe
 ```
 
 ```python
@@ -546,15 +548,15 @@ from ranbval_sdk import load_ranbval, public, decrypt_key, proxy_request, proxy_
 
 load_ranbval()
 
-# [public] — plain str, safe to show anywhere
-db = public("DATABASE_URL")
+# PUBLIC_ — plain str, safe to show anywhere
+db = public("PUBLIC_DATABASE_URL")
 
-# [secrets] — app decrypts & may view/use the plaintext (e.g. show it, or open a DB connection)
-pw = decrypt_key("DASHBOARD_PASSWORD").use()
+# SECRET_ — app decrypts & may view/use the plaintext (e.g. show it, or open a DB connection)
+pw = decrypt_key("SECRET_DASHBOARD_PASSWORD").use()
 
-# [proxy] — plaintext NEVER enters your process; the key is injected server-side
+# PROXY_ — plaintext NEVER enters your process; the key is injected server-side
 resp = proxy_request(
-    token=proxy_token("OPENAI_API_KEY"),          # only the encrypted token leaves your code
+    token=proxy_token("PROXY_OPENAI_KEY"),        # only the encrypted token leaves your code
     target_url="https://api.openai.com/v1/chat/completions",
     inject_as="bearer",
     body={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
@@ -563,34 +565,50 @@ resp = proxy_request(
 
 **How the three behave**
 
-- `public("X")` returns plaintext — and **refuses** a `[secrets]` or `[proxy]` key (or any `ranbval.*` token).
-- `decrypt_key("X").use()` returns plaintext for `[secrets]` — and **refuses `[proxy]` keys** (`RanbvalConfigError`, code `proxy_only`): their plaintext must never reach the client.
-- `proxy_token("X")` returns the raw **encrypted** token for `[proxy]` keys, to pass to `proxy_request()` — the real key is decrypted and injected only on Ranbval's server.
-- `is_public("X")` / `is_proxy("X")` report the declared section.
+- `public("PUBLIC_X")` returns plaintext — and **refuses** a `SECRET_`/`PROXY_` key (or any `ranbval.*` token).
+- `decrypt_key("SECRET_X").use()` returns plaintext for `SECRET_` — and **refuses `PROXY_`** (`code=proxy_only`) and `PUBLIC_` (`code=not_a_secret`).
+- `proxy_token("PROXY_X")` returns the raw **encrypted** token for `PROXY_` keys, to pass to `proxy_request()` — the real key is decrypted and injected only on Ranbval's server.
+- `is_public("X")` / `is_proxy("X")` report the class from the prefix.
 
-**Why `[proxy]` matters:** once plaintext reaches your process, any code there (including an AI
-agent you gave code execution) can copy it — no library can prevent that. `[proxy]` keys never
+**Why `PROXY_` matters:** once plaintext reaches your process, any code there (including an AI
+agent you gave code execution) can copy it — no library can prevent that. `PROXY_` keys never
 become plaintext on the client, so there is nothing to copy. Pair it with **not shipping
 `RANBVAL_PROJECT_SECRET` to that client** and it is cryptographically impossible for that
 environment to produce the plaintext at all.
 
 **Rules & safety rails**
 
-- **Fully backward compatible.** Sections are optional. A flat `.ranbval` (no headers) behaves
-  exactly as before — `ranbval.*` values are auto-detected as secrets, everything else is plain.
-- Keys **before any header** (or under an unrecognised header) stay *unlabelled* and keep the
-  auto-detect behaviour.
-- `load_ranbval()` **warns** when a value contradicts its section (e.g. plaintext under `[proxy]`).
-- Header aliases: `[public]` = `[plain]`/`[plaintext]`/`[config]`; `[secrets]` = `[secret]`/`[vault]`/`[encrypted]`; `[proxy]` = `[proxy-only]`/`[sealed]`.
+- **Every variable is classified** — an unprefixed key raises `RanbvalConfigError`
+  (`code=unclassified_key`); a `[section]` header raises `code=section_not_supported`.
+- `load_ranbval()` **warns** when a value contradicts its prefix (e.g. plaintext under `SECRET_`,
+  a `ranbval.*` token under `PUBLIC_`).
+- **Sole loader:** by default `load_ranbval()` refuses to run beside a competing `.env*` file or
+  an imported dotenv-style library — see below.
 
 The same policy is available on the `Vault` / `env` object, so a secret can never come out of a
 public path on any access surface:
 
 ```python
 from ranbval_sdk import env
-env.public("DATABASE_URL")     # -> plain str
-env.public("OPENAI_API_KEY")   # -> raises (declared [proxy]) — use proxy_request()
+env.public("PUBLIC_DATABASE_URL")   # -> plain str
+env.public("PROXY_OPENAI_KEY")      # -> raises (PROXY_) — use proxy_request()
 ```
+
+## Ranbval is the sole loader
+
+Ranbval must be the **only** thing loading your config/secrets — mixing in a `.env` file or
+`python-dotenv` reintroduces the plaintext sprawl it exists to remove. `load_ranbval()` enforces
+this by default:
+
+```python
+load_ranbval()                     # raises if a .env* file sits beside .ranbval,
+                                    # or if python-dotenv/decouple/environs/dynaconf is imported
+load_ranbval(sole_loader=False)    # opt out (only if a dependency pulls one in unavoidably)
+```
+
+**Honest limit:** a bare `os.getenv("X")` is ordinary Python and **cannot** be detected or
+forbidden — the SDK uses `os.environ` internally too. Only competing config *files* and *imported
+loader libraries* are caught.
 
 ---
 

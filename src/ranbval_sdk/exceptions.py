@@ -106,7 +106,7 @@ class RanbvalSecurityError(RanbvalError, PermissionError):
     This is a **naive-attacker deterrent, not a guarantee** — once ``.use()`` returns a real
     ``str``, the base ``str`` methods (``str.__str__(val)``, ``str.__getitem__(val, ...)``) and
     the real buffer slot (``object.__getattribute__(s, "_b")``) still reach the plaintext
-    in-process and cannot be blocked. Only ``[proxy]`` secrets (plaintext never enters the client)
+    in-process and cannot be blocked. Only ``PROXY_`` secrets (plaintext never enters the client)
     are absolute. Disable with ``set_enforcement(False)`` if a legitimate library trips it.
     """
 

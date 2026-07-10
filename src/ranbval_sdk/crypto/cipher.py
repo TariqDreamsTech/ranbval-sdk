@@ -234,22 +234,29 @@ def decrypt_key(env_var: str) -> SecretString:
     If the value is not a vault token (does not start with ``ranbval.``), it is returned
     as-is wrapped in SecretString — so plain keys and vault tokens are handled the same way.
 
-    A key declared under ``[proxy]`` is refused here: its plaintext must never reach the
+    A key declared under ``PROXY_`` is refused here: its plaintext must never reach the
     client, so use :func:`ranbval_sdk.proxy_request` with :func:`ranbval_sdk.proxy_token`
     instead — the real key is injected server-side and never returned to your process.
 
     Raises:
         ValueError  — env var missing, no project secret found, or decryption failed;
-                      or the key is declared ``[proxy]`` (use ``proxy_request`` instead)
+                      or the key is declared ``PROXY_`` (use ``proxy_request`` instead)
     """
     from ranbval_sdk.config import manifest
 
     if manifest.is_proxy(env_var):
         raise RanbvalConfigError(
-            f"{env_var!r} is a [proxy] secret — its plaintext must never reach the client. "
+            f"{env_var!r} is a PROXY_ secret — its plaintext must never reach the client. "
             f"Use proxy_request(token=proxy_token({env_var!r}), ...) instead; the real key "
             "is decrypted and injected server-side.",
             code="proxy_only",
+        )
+
+    if manifest.is_public(env_var):
+        raise RanbvalConfigError(
+            f"{env_var!r} is a PUBLIC_ value, not a secret — read it with public({env_var!r}). "
+            "decrypt_key() is only for SECRET_ vault tokens.",
+            code="not_a_secret",
         )
 
     token = os.environ.get(env_var, "").strip()

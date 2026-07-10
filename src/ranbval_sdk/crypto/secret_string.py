@@ -201,7 +201,7 @@ def _notify_reveal(method: str) -> None:
 # instead of silently walking off with the plaintext. Honest limit: this stops the *naive*
 # vectors; the base ``str`` methods (``str.__str__(val)``, ``str.__getitem__(val, ...)``) and the
 # real slot ``object.__getattribute__(s, "_b")`` still bypass it in-process and cannot be blocked.
-# Only ``[proxy]`` secrets are absolute. Turn off with ``set_enforcement(False)``.
+# Only ``PROXY_`` secrets are absolute. Turn off with ``set_enforcement(False)``.
 _enforce: bool = True
 
 _EXTRACTION_MESSAGE = {
@@ -209,29 +209,29 @@ _EXTRACTION_MESSAGE = {
         "Ranbval: character-by-character iteration of a secret is blocked — this is how "
         "in-memory extraction (''.join(c for c in key.use())) works. Pass the value straight "
         "to your SDK/HTTP client instead. If a legitimate library needs to iterate it, call "
-        "set_enforcement(False); for absolute safety use a [proxy] secret."
+        "set_enforcement(False); for absolute safety use a PROXY_ secret."
     ),
     "encode": (
         "Ranbval: encoding a secret to bytes is blocked (an extraction path). Pass key.use() "
         "directly to the client that needs it. If a legitimate signer/driver must encode it "
-        "(e.g. AWS SigV4, a DB driver), call set_enforcement(False); a [proxy] secret avoids "
+        "(e.g. AWS SigV4, a DB driver), call set_enforcement(False); a PROXY_ secret avoids "
         "the plaintext entirely."
     ),
     "slice": (
         "Ranbval: slicing/indexing a secret (val[:], val[0]) is blocked — it reads the plaintext "
         "out character by character. Pass key.use() straight to your client; f-strings still work. "
-        "(set_enforcement(False) to disable; a [proxy] secret is the only absolute guarantee.)"
+        "(set_enforcement(False) to disable; a PROXY_ secret is the only absolute guarantee.)"
     ),
     "str": (
         "Ranbval: str()/print()/'%s' of a secret is blocked under enforcement (it is masked when "
         "enforcement is off). Pass key.use() straight to your client; f-strings build headers fine. "
         "Note: the base str.__str__(val) call CANNOT be intercepted (the str type is immutable) — "
-        "only a [proxy] secret keeps the value off the client entirely. (set_enforcement(False) to disable.)"
+        "only a PROXY_ secret keeps the value off the client entirely. (set_enforcement(False) to disable.)"
     ),
     "buffer_read": (
         "Ranbval: reading a secret's internal buffer (_buf/_pad) is blocked — no legitimate "
         "caller touches these. Use key.use() at the point of use. (set_enforcement(False) to "
-        "disable; a [proxy] secret is the only absolute guarantee.)"
+        "disable; a PROXY_ secret is the only absolute guarantee.)"
     ),
 }
 
@@ -359,7 +359,7 @@ class SecretString:
     **Honest limit.** The real slots ``_b`` / ``_p`` still exist and can be read with
     ``object.__getattribute__(s, "_b")`` by anyone who reads this (open-source) file — it is
     bar-raising against naive/automated extraction, not an absolute guarantee. The only value
-    that never exists in the client process is a ``[proxy]`` secret.
+    that never exists in the client process is a ``PROXY_`` secret.
     """
 
     __slots__ = ("_b", "_p", "_label", "_wiped")

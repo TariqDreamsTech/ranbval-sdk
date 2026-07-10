@@ -134,7 +134,7 @@ class Vault:
     def public(self, name: str, default: Any = _UNSET) -> str:
         """Return a **plaintext** config value the public way — same policy as :func:`public`.
 
-        A key declared ``[secrets]`` (or any ``ranbval.*`` token) is refused, so a secret can
+        A key declared ``SECRET_`` (or any ``ranbval.*`` token) is refused, so a secret can
         never be read through this public path::
 
             env.public("DATABASE_URL")     # -> plain str
@@ -144,7 +144,7 @@ class Vault:
         return _lookup_public(name, default)
 
     def public_config(self) -> dict[str, str]:
-        """Every ``[public]``-declared key as ``{name: plaintext}`` (secrets never included)."""
+        """Every ``PUBLIC_``-declared key as ``{name: plaintext}`` (secrets never included)."""
         self._ensure_loaded()
         return _lookup_public_config()
 
@@ -274,7 +274,7 @@ def iter_secrets(*, mode: str | None = None) -> Iterator[tuple[str, SecretString
 def _lookup_public(name: str, default: Any) -> str:
     """The single place that enforces the public-access policy (env assumed loaded).
 
-    A key declared ``[secrets]`` or ``[proxy]`` — or any ``ranbval.*`` token value — is
+    A key declared ``SECRET_`` or ``PROXY_`` — or any ``ranbval.*`` token value — is
     **never** returned here; all raise. This is what guarantees a secret can never leak
     through a public path, no matter which surface (function or ``Vault`` method) was used.
     """
@@ -282,13 +282,13 @@ def _lookup_public(name: str, default: Any) -> str:
 
     if manifest.is_secret(name):
         raise RanbvalConfigError(
-            f"{name!r} is declared under [secrets]; use decrypt_key({name!r}) instead. "
+            f"{name!r} is a SECRET_ value; use decrypt_key({name!r}) instead. "
             "public() only returns plaintext configuration.",
             code="not_a_public_key",
         )
     if manifest.is_proxy(name):
         raise RanbvalConfigError(
-            f"{name!r} is declared under [proxy]; its plaintext never reaches the client. "
+            f"{name!r} is a PROXY_ value; its plaintext never reaches the client. "
             f"Use proxy_request(token=proxy_token({name!r}), ...) instead.",
             code="not_a_public_key",
         )
@@ -310,7 +310,7 @@ def _lookup_public(name: str, default: Any) -> str:
 
 
 def _lookup_public_config() -> dict[str, str]:
-    """Collect all ``[public]``-declared plaintext values (env assumed loaded)."""
+    """Collect all ``PUBLIC_``-declared plaintext values (env assumed loaded)."""
     from ranbval_sdk.config import manifest
 
     out: dict[str, str] = {}
@@ -325,21 +325,19 @@ def public(name: str, default: Any = _UNSET, *, mode: str | None = None) -> str:
     """Return a **plaintext** config value — never decrypts, never a :class:`SecretString`.
 
     For values you intentionally keep unencrypted (``DATABASE_URL``, ``CORS_ORIGINS``,
-    ``PORT``, …). Declare them under a ``[public]`` section in ``.ranbval`` to make the
-    intent explicit::
+    ``PORT``, …). Give them a ``PUBLIC_`` prefix in ``.ranbval`` to make the intent explicit::
 
         # .ranbval
-        [public]
-        DATABASE_URL=postgresql://localhost/mydb
-        CORS_ORIGINS=https://a.com,https://b.com
+        PUBLIC_DATABASE_URL=postgresql://localhost/mydb
+        PUBLIC_CORS_ORIGINS=https://a.com,https://b.com
 
         # app.py
         from ranbval_sdk import public
-        db = public("DATABASE_URL")          # -> plain str
+        db = public("PUBLIC_DATABASE_URL")          # -> plain str
 
     Safety rails:
 
-    - If the key was declared under ``[secrets]``, this raises — use ``decrypt_key`` for it.
+    - If the key is ``SECRET_`` or ``PROXY_``, this raises — use ``decrypt_key`` / the proxy.
     - If the value looks like an encrypted ``ranbval.*`` token, this raises rather than
       handing back ciphertext (you almost certainly meant :func:`~ranbval_sdk.decrypt_key`).
 
@@ -350,7 +348,7 @@ def public(name: str, default: Any = _UNSET, *, mode: str | None = None) -> str:
 
 
 def public_config(*, mode: str | None = None) -> dict[str, str]:
-    """Return every key declared under ``[public]`` as a ``{name: plaintext}`` dict.
+    """Return every key declared under ``PUBLIC_`` as a ``{name: plaintext}`` dict.
 
     ::
 
@@ -362,28 +360,28 @@ def public_config(*, mode: str | None = None) -> dict[str, str]:
 
 
 def is_public(name: str) -> bool:
-    """True when *name* was declared under a ``[public]`` section in ``.ranbval``."""
+    """True when *name* carries the ``PUBLIC_`` prefix."""
     from ranbval_sdk.config import manifest
 
     return manifest.is_public(name)
 
 
 def is_proxy(name: str) -> bool:
-    """True when *name* was declared under a ``[proxy]`` section in ``.ranbval``."""
+    """True when *name* carries the ``PROXY_`` prefix."""
     from ranbval_sdk.config import manifest
 
     return manifest.is_proxy(name)
 
 
 def proxy_token(name: str, *, mode: str | None = None) -> str:
-    """Return the raw encrypted ``ranbval.*`` token for a ``[proxy]`` secret.
+    """Return the raw encrypted ``ranbval.*`` token for a ``PROXY_`` secret.
 
-    ``[proxy]`` secrets are never decrypted on the client — you pass this encrypted token to
+    ``PROXY_`` secrets are never decrypted on the client — you pass this encrypted token to
     :func:`~ranbval_sdk.proxy_request`, and Ranbval injects the real key server-side::
 
         from ranbval_sdk import proxy_request, proxy_token
         proxy_request(
-            token=proxy_token("OPENAI_API_KEY"),
+            token=proxy_token("PROXY_OPENAI_KEY"),
             target_url="https://api.openai.com/v1/chat/completions",
             inject_as="bearer",
             body={...},
@@ -392,10 +390,9 @@ def proxy_token(name: str, *, mode: str | None = None) -> str:
     The returned value is only the ciphertext token — useless without the project secret and
     an allowlisted repo, so it is safe to hold and pass around.
 
-    Section-aware, to match ``public()`` / ``decrypt_key()``: a key declared ``[public]`` or
-    ``[secrets]`` is **refused** (those are read with ``public()`` / ``decrypt_key().use()``).
-    Only ``[proxy]`` keys — or unlabelled ``ranbval.*`` tokens — are accepted. Raises if the
-    value is not an encrypted ``ranbval.*`` token.
+    Prefix-aware, to match ``public()`` / ``decrypt_key()``: a ``PUBLIC_`` or ``SECRET_`` key is
+    **refused** (those are read with ``public()`` / ``decrypt_key().use()``). Only ``PROXY_``
+    keys are accepted. Raises if the value is not an encrypted ``ranbval.*`` token.
     """
     from ranbval_sdk.config import manifest
 
@@ -403,14 +400,14 @@ def proxy_token(name: str, *, mode: str | None = None) -> str:
 
     if manifest.is_public(name):
         raise RanbvalConfigError(
-            f"{name!r} is declared [public]; read it with public({name!r}). "
-            "proxy_token() is only for [proxy] vault tokens.",
+            f"{name!r} is a PUBLIC_ value; read it with public({name!r}). "
+            "proxy_token() is only for PROXY_ vault tokens.",
             code="not_a_proxy_token",
         )
     if manifest.is_secret(name):
         raise RanbvalConfigError(
-            f"{name!r} is declared [secrets] — decrypt it locally with decrypt_key({name!r}). "
-            "Move it to [proxy] if its plaintext should never reach the client.",
+            f"{name!r} is a SECRET_ token — decrypt it locally with decrypt_key({name!r}). "
+            "Rename it to PROXY_ if its plaintext should never reach the client.",
             code="not_a_proxy_token",
         )
 
@@ -422,7 +419,7 @@ def proxy_token(name: str, *, mode: str | None = None) -> str:
     if not _is_token(raw):
         raise RanbvalConfigError(
             f"{name!r} is not an encrypted 'ranbval.*' token, so it cannot be used via the "
-            "proxy. Put a vault token under [proxy], or read it with public()/decrypt_key().",
+            "proxy. Put a vault token under PROXY_, or read it with public()/decrypt_key().",
             code="not_a_proxy_token",
         )
     return raw

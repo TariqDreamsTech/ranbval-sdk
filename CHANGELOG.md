@@ -4,6 +4,45 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.0.0] - 2026-07-10
+
+**Breaking.** Configuration is now classified by a **required name prefix**, and Ranbval enforces
+that it is the **sole** config/secret loader. `[section]` headers are gone.
+
+### Changed / Breaking
+- **Prefix-based classification.** Every variable in a `.ranbval` file must start with one of:
+  - `PUBLIC_…`  — plaintext config, read with `public("PUBLIC_…")`
+  - `SECRET_…`  — encrypted; `decrypt_key("SECRET_…").use()` reveals it locally
+  - `PROXY_…`   — encrypted; plaintext **never** on the client; `proxy_token("PROXY_…")` + proxy
+
+  The class lives in the name, so it is visible at every reference — in the file, in `os.environ`,
+  and in code. `RANBVAL_*` and `*_PROJECT_SECRET` are exempt (infrastructure keys).
+- **`[public]` / `[secrets]` / `[proxy]` section headers are removed.** A `[section]` line now
+  raises `RanbvalConfigError` (`code="section_not_supported"`).
+- **Unclassified keys are rejected at load time** (`code="unclassified_key"`) — no more silent
+  auto-detect. Rename `FOO` → `PUBLIC_FOO` / `SECRET_FOO` / `PROXY_FOO`.
+- `decrypt_key` now also refuses a `PUBLIC_` key (`code="not_a_secret"`), matching how it already
+  refuses `PROXY_`.
+
+### Added
+- **Sole-loader enforcement** (`load_ranbval(sole_loader=True)`, default on): raises if a
+  competing `.env*` file sits beside your `.ranbval` (`code="competing_env_file"`), or if a
+  dotenv-style library (`python-dotenv` / `decouple` / `environs` / `dynaconf`) is already
+  imported (`code="competing_env_loader"`). Pass `sole_loader=False` to opt out.
+  - **Honest limit:** a bare `os.getenv("X")` is ordinary Python and cannot be detected or
+    forbidden — only competing *files* and *imported loaders* are caught.
+
+### Migration
+```
+# before (v2)                     # after (v3)
+[public]                          PUBLIC_DATABASE_URL=postgres://…
+DATABASE_URL=postgres://…         SECRET_OPENAI_KEY=ranbval.…
+[secrets]                         PROXY_STRIPE_KEY=ranbval.…
+OPENAI_KEY=ranbval.…              RANBVAL_PROJECT_SECRET=ranbval-proj-…   # exempt
+```
+
+---
+
 ## [2.3.0] - 2026-07-09
 
 Detection → **enforcement**. The extraction vectors 2.2.x only *reported* now **raise** by default.

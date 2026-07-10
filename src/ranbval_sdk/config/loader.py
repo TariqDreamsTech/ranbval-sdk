@@ -10,11 +10,51 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import warnings
 from pathlib import Path
 
 from ranbval_sdk.config import manifest
 from ranbval_sdk.exceptions import RanbvalConfigError
+
+# Ranbval must be the *only* configuration/secret loader. These are the competing dotenv-style
+# loaders we can actually detect once imported; ``os.getenv`` itself is plain Python and cannot
+# be forbidden (the SDK uses it internally too).
+_COMPETING_LOADERS = {
+    "dotenv": "python-dotenv",
+    "decouple": "python-decouple (from decouple import config)",
+    "environs": "environs",
+    "dynaconf": "dynaconf",
+}
+
+
+def _enforce_sole_loader(root: Path | None) -> None:
+    """Refuse to run alongside another env loader: a competing ``.env*`` file, or a known
+    env-loader library already imported. Keeps Ranbval the single source of secrets/config.
+
+    Honest limit: a bare ``os.getenv("X")`` cannot be detected or forbidden — it is ordinary
+    Python. This catches the two competing mechanisms that *can* be seen.
+    """
+    if root is not None:
+        competing = sorted(
+            p.name for p in root.glob(".env*") if p.is_file() and p.name != ".ranbval"
+        )
+        if competing:
+            raise RanbvalConfigError(
+                f"Competing env file(s) found next to your .ranbval: {', '.join(competing)}. "
+                "Ranbval must be the only config source — move those values into .ranbval "
+                "(with PUBLIC_/SECRET_/PROXY_ prefixes) and delete the .env file(s). "
+                "Pass load_ranbval(sole_loader=False) only if you must keep them.",
+                code="competing_env_file",
+            )
+    imported = sorted({pkg for mod, pkg in _COMPETING_LOADERS.items() if mod in sys.modules})
+    if imported:
+        raise RanbvalConfigError(
+            f"A non-Ranbval env loader is imported: {', '.join(imported)}. Ranbval should be "
+            "the sole secret loader — remove it and load everything via load_ranbval(). "
+            "Pass load_ranbval(sole_loader=False) if a dependency pulls it in unavoidably.",
+            code="competing_env_loader",
+        )
 
 
 def resolve_ranbval_mode(mode: str | None = None) -> str:
@@ -47,40 +87,25 @@ def _strip_inline_comment(value: str) -> str:
     return v
 
 
-_SECTION_RE = re.compile(r"^\[\s*(?P<name>[A-Za-z0-9_-]+)\s*\]$")
+def _parse_ranbval_file(path: Path) -> dict[str, str]:
+    """Parse one ``.ranbval`` file into ``{name: value}``.
 
-
-def _section_kind(header: str) -> str | None:
-    """Map a ``[section]`` header to ``"public"`` / ``"secret"`` / ``"proxy"``, or ``None``."""
-    name = header.lower()
-    if name in manifest.PUBLIC_SECTIONS:
-        return "public"
-    if name in manifest.SECRET_SECTIONS:
-        return "secret"
-    if name in manifest.PROXY_SECTIONS:
-        return "proxy"
-    return None  # unknown header — keys under it stay unlabelled (auto-detect)
-
-
-def _parse_ranbval_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
-    """Parse one ``.ranbval`` file into ``(values, kinds)``.
-
-    ``values`` is ``name -> value``; ``kinds`` is ``name -> "public"|"secret"`` for keys that
-    appear under a recognised ``[public]`` / ``[secret]`` section. Keys before any section (or
-    under an unknown header) are omitted from ``kinds`` so they keep the auto-detect behaviour.
+    Classification comes from each key's **name prefix** (``PUBLIC_`` / ``SECRET_`` / ``PROXY_``),
+    not from any ``[section]`` header — so there is no section state to track here.
     """
     out: dict[str, str] = {}
-    kinds: dict[str, str] = {}
-    section: str | None = None
     with open(path, encoding="utf-8-sig") as f:
         for raw_line in f:
             line = raw_line.strip()
             if not line or line.startswith("#"):
                 continue
-            header = _SECTION_RE.match(line)
-            if header:
-                section = _section_kind(header.group("name"))
-                continue
+            if line.startswith("[") and line.endswith("]"):
+                raise RanbvalConfigError(
+                    f"{path.name}: '[section]' headers are no longer supported. Classify each "
+                    "variable by a name prefix instead — PUBLIC_/SECRET_/PROXY_ "
+                    "(e.g. SECRET_OPENAI_KEY=ranbval.…). See the README 'Variable classification'.",
+                    code="section_not_supported",
+                )
             if line.lower().startswith("export "):
                 line = line[7:].strip()
             if "=" not in line:
@@ -93,9 +118,7 @@ def _parse_ranbval_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
             if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
                 value = value[1:-1]
             out[key] = value
-            if section is not None:
-                kinds[key] = section
-    return out, kinds
+    return out
 
 
 def _layer_paths(directory: Path, mode: str) -> list[Path]:
@@ -149,28 +172,47 @@ def _normalize_project_name(name: str) -> str:
     return re.sub(r"[^A-Z0-9]", "_", name.upper().strip()).strip("_")
 
 
-def _warn_declaration_mismatches(values: dict[str, str], kinds: dict[str, str]) -> None:
-    """Warn when a value contradicts its declared section (helps catch copy/paste mistakes)."""
-    for key, kind in kinds.items():
-        value = values.get(key, "")
-        if kind == "public" and value.startswith("ranbval."):
+def _validate_classification(values: dict[str, str]) -> None:
+    """Reject any ``.ranbval`` key that lacks a class prefix (and isn't exempt infrastructure).
+
+    Every variable must start with ``PUBLIC_`` / ``SECRET_`` / ``PROXY_``. ``RANBVAL_*`` and
+    ``*_PROJECT_SECRET`` are exempt. This is what guarantees every value's exposure class is
+    declared in its own name — no unclassified, ambiguous keys reach the app.
+    """
+    unclassified = [name for name in values if not manifest.is_classified(name)]
+    if unclassified:
+        listed = ", ".join(sorted(unclassified))
+        raise RanbvalConfigError(
+            f"These .ranbval variables have no class prefix: {listed}. Every variable must start "
+            "with PUBLIC_ (plaintext), SECRET_ (decrypt locally), or PROXY_ (server-side only) — "
+            "e.g. rename FOO to PUBLIC_FOO / SECRET_FOO / PROXY_FOO. "
+            "(RANBVAL_* and *_PROJECT_SECRET are exempt.)",
+            code="unclassified_key",
+        )
+
+
+def _warn_value_mismatches(values: dict[str, str]) -> None:
+    """Warn when a value contradicts its name prefix (helps catch copy/paste mistakes)."""
+    for key, value in values.items():
+        kind = manifest.kind_of(key)
+        is_token = value.startswith("ranbval.")
+        if kind == "public" and is_token:
             warnings.warn(
-                f"{key!r} is declared under [public] but its value is an encrypted "
-                "vault token. Public keys are meant to be plaintext — move it to [secrets].",
+                f"{key!r} is PUBLIC_ but its value is an encrypted vault token. Public keys are "
+                "meant to be plaintext — rename it to SECRET_ or PROXY_.",
                 stacklevel=3,
             )
-        elif kind == "secret" and value and not value.startswith("ranbval."):
+        elif kind == "secret" and value and not is_token:
             warnings.warn(
-                f"{key!r} is declared under [secrets] but its value is plaintext "
-                "(not a 'ranbval.*' token), so it will not be decrypted. "
-                "Move it to [public] or replace it with a vault token.",
+                f"{key!r} is SECRET_ but its value is plaintext (not a 'ranbval.*' token), so it "
+                "will not be decrypted. Rename it to PUBLIC_ or replace it with a vault token.",
                 stacklevel=3,
             )
-        elif kind == "proxy" and value and not value.startswith("ranbval."):
+        elif kind == "proxy" and value and not is_token:
             warnings.warn(
-                f"{key!r} is declared under [proxy] but its value is plaintext "
-                "(not a 'ranbval.*' token). A [proxy] secret must be an encrypted vault "
-                "token — its plaintext is only ever injected server-side via the proxy.",
+                f"{key!r} is PROXY_ but its value is plaintext (not a 'ranbval.*' token). A proxy "
+                "secret must be an encrypted vault token — its plaintext is only injected "
+                "server-side via the proxy.",
                 stacklevel=3,
             )
 
@@ -184,6 +226,7 @@ def load_ranbval(
     project_secret: str | None = None,
     project_name: str | None = None,
     guard_stdout: bool = False,
+    sole_loader: bool = True,
 ) -> bool:
     """
     Load ``KEY=value`` pairs into ``os.environ``.
@@ -228,31 +271,48 @@ def load_ranbval(
       revealed secret straight to them raises ``PermissionError``. Opt-in because it mutates
       global builtins and can surprise other libraries / test capture.
 
+    **Sole loader** (default on):
+
+    - ``sole_loader=True`` (default): Ranbval must be the *only* config/secret loader. Raises
+      ``RanbvalConfigError`` if a competing ``.env*`` file sits next to your ``.ranbval``, or if a
+      dotenv-style library (``python-dotenv``/``decouple``/``environs``/``dynaconf``) is already
+      imported. (A bare ``os.getenv`` is plain Python and cannot be detected — not covered.)
+    - ``sole_loader=False``: skip that check (only if a dependency pulls one in unavoidably).
+
+    **Variable classification:** every key in a ``.ranbval`` file must start with ``PUBLIC_``,
+    ``SECRET_``, or ``PROXY_`` (``RANBVAL_*`` and ``*_PROJECT_SECRET`` are exempt). Any
+    unclassified key — or a legacy ``[section]`` header — raises ``RanbvalConfigError``.
+
     Returns True if at least one file was read.
     """
     if path:
         p = Path(path)
         if not p.is_file():
             return False
-        merged, merged_kinds = _parse_ranbval_file(p)
+        config_root = p.parent
+        merged = _parse_ranbval_file(p)
     else:
         root = find_ranbval_directory(start)
         if not root:
             return False
+        config_root = root
         m = resolve_ranbval_mode(mode)
         layers = _layer_paths(root, m)
         if not layers:
             return False
         merged = {}
-        merged_kinds = {}
         for layer_path in layers:
-            values, kinds = _parse_ranbval_file(layer_path)
-            merged.update(values)
-            merged_kinds.update(kinds)
+            merged.update(_parse_ranbval_file(layer_path))
 
-    # Record [public]/[secret] declarations and flag values that contradict them.
-    manifest.record(merged_kinds)
-    _warn_declaration_mismatches(merged, merged_kinds)
+    # Ranbval must be the sole config/secret loader — refuse to run beside a competing .env file
+    # or an imported dotenv-style library (see _enforce_sole_loader for the honest limits).
+    if sole_loader:
+        _enforce_sole_loader(config_root)
+
+    # Every variable must declare its class via a name prefix (PUBLIC_/SECRET_/PROXY_); reject
+    # anything unclassified, then warn on values that contradict their prefix.
+    _validate_classification(merged)
+    _warn_value_mismatches(merged)
 
     for key, value in merged.items():
         if override or key not in os.environ or os.environ.get(key, "") == "":
