@@ -2,7 +2,7 @@
 # [tool.poetry] block below only carries build-time bits that have no PEP 621 field.
 [project]
 name = "ranbval-sdk"
-version = "3.0.0"
+version = "3.1.0"
 description = "Keep API secrets out of plaintext config: layered .ranbval* env files, decrypt vault tokens only when used, with built-in repo-allowlist enforcement and automatic usage telemetry to the Live Monitor—minimal deps, your own HTTP/SDK stack."
 authors = [
     { name = "Ahsan Tariq" },
@@ -26,6 +26,9 @@ classifiers = [
     "Topic :: Security",
     "Topic :: Security :: Cryptography",
 ]
+
+[project.scripts]
+ranbval = "ranbval_sdk.cli:main"
 
 [project.urls]
 Homepage = "https://www.ranbval.com"

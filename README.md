@@ -103,6 +103,18 @@ RANBVAL_PROJECT_SECRET=your_dashboard_project_secret
 SECRET_OPENAI_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
 ```
 
+## CLI
+
+`pip install ranbval-sdk` ships a `ranbval` command:
+
+```bash
+ranbval init                # starter .ranbval + gitignore .ranbval.local
+ranbval check               # lint: unclassified keys, [section] headers, competing .env, mismatches
+ranbval run -- python app.py  # load .ranbval into the env, then run (secrets only in that process)
+```
+
+`ranbval check` exits non-zero on errors, so drop it into CI or a pre-commit hook.
+
 ---
 
 ## Module Reference

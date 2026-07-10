@@ -4,6 +4,20 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.1.0] - 2026-07-10
+
+### Added
+- **`ranbval` CLI** (installed as a console script — `pip install ranbval-sdk` is enough):
+  - `ranbval init` — write a starter `.ranbval` and gitignore `.ranbval.local`.
+  - `ranbval check` — lint `.ranbval`: unclassified keys, `[section]` headers, competing `.env*`
+    files / imported loaders, and prefix/value mismatches. Non-zero exit on errors (CI-friendly).
+  - `ranbval run -- CMD …` — load `.ranbval` into the environment, then exec `CMD` (secrets only
+    in that process, nothing on disk). Never prints a value.
+
+  Dependency-free (argparse + stdlib).
+
+---
+
 ## [3.0.0] - 2026-07-10
 
 **Breaking.** Configuration is now classified by a **required name prefix**, and Ranbval enforces
