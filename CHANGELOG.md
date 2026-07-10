@@ -4,6 +4,22 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.2.0] - 2026-07-10
+
+### Added
+- **Remote config** — `load_ranbval(remote=True, project_secret="ranbval-proj-…")` fetches the
+  project's whole env-set from the Ranbval control plane instead of reading local files, then runs
+  the **same** classification + crypto pipeline. `SECRET_`/`PROXY_` values arrive as encrypted
+  `ranbval.*` tokens and are decrypted client-side exactly as from a file; `PUBLIC_` values are
+  plaintext. `host=` overrides the control-plane URL.
+- **`fetch_env_set(project_secret=…, host=…)`** — the low-level `{name: value}` fetch, in the new
+  `ranbval_sdk.remote` package (a pure *source* — it decrypts nothing).
+
+  Clean separation: remote only changes *where the config comes from*. `SecretString`,
+  enforcement, and the prefix rules are untouched.
+
+---
+
 ## [3.1.0] - 2026-07-10
 
 ### Added

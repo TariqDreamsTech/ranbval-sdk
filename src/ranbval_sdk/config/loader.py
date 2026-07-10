@@ -227,6 +227,8 @@ def load_ranbval(
     project_name: str | None = None,
     guard_stdout: bool = False,
     sole_loader: bool = True,
+    remote: bool = False,
+    host: str | None = None,
 ) -> bool:
     """
     Load ``KEY=value`` pairs into ``os.environ``.
@@ -283,9 +285,24 @@ def load_ranbval(
     ``SECRET_``, or ``PROXY_`` (``RANBVAL_*`` and ``*_PROJECT_SECRET`` are exempt). Any
     unclassified key — or a legacy ``[section]`` header — raises ``RanbvalConfigError``.
 
-    Returns True if at least one file was read.
+    **Remote config** (optional):
+
+    - ``remote=True``: instead of reading local files, fetch the project's env-set from the
+      Ranbval control plane using ``project_secret`` (owner credential) and load it through the
+      same pipeline. ``SECRET_``/``PROXY_`` values arrive as encrypted ``ranbval.*`` tokens and
+      are decrypted client-side exactly as from a file. ``host`` overrides the control-plane URL.
+
+    Returns True if at least one file was read (always True for a successful ``remote=True`` load).
     """
-    if path:
+    if remote:
+        # Remote is just another SOURCE: fetch the env-set from the control plane, then run the
+        # identical validation + crypto pipeline below. No local files are read.
+        from ranbval_sdk.remote.client import fetch_env_set
+
+        ps = (project_secret or os.environ.get("RANBVAL_PROJECT_SECRET") or "").strip()
+        merged = fetch_env_set(project_secret=ps, host=host)
+        config_root = None
+    elif path:
         p = Path(path)
         if not p.is_file():
             return False

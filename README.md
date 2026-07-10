@@ -115,6 +115,22 @@ ranbval run -- python app.py  # load .ranbval into the env, then run (secrets on
 
 `ranbval check` exits non-zero on errors, so drop it into CI or a pre-commit hook.
 
+## Remote config (no local file)
+
+Pull the whole env-set from the Ranbval control plane instead of shipping a `.ranbval` — the
+project secret is the credential, and everything downstream (decryption, prefixes, enforcement)
+is identical to loading from a file:
+
+```python
+from ranbval_sdk import load_ranbval, decrypt_key
+
+load_ranbval(remote=True, project_secret="ranbval-proj-…")   # fetches SECRET_/PROXY_/PUBLIC_
+client = openai.OpenAI(api_key=decrypt_key("SECRET_OPENAI_KEY").use())
+```
+
+`SECRET_`/`PROXY_` values come down as encrypted `ranbval.*` tokens (decrypted client-side);
+`PUBLIC_` values are plaintext. Add a key in the dashboard → it appears here on the next load.
+
 ---
 
 ## Module Reference
