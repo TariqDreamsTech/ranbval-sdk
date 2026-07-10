@@ -4,6 +4,28 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.3.1] - 2026-07-10
+
+Internal restructuring + repo hygiene. **No public API or behaviour change** — every symbol,
+import path, and error class is preserved (verified by the full test suite).
+
+### Changed (internal)
+- **`crypto.secret_string` split** (530 → 323 lines) into cohesive modules: `crypto/memory.py`
+  (mlock), `crypto/enforcement.py` (extraction guards + reveal notifier), `crypto/output_guards.py`
+  (opt-in print patching). `crypto/__init__` re-exports the same public API.
+- **`cli` is now a package** — one module per command (`cli/init.py`, `cli/check.py`,
+  `cli/run.py`) + `cli/_shared.py`. Console entry point `ranbval` unchanged.
+- **`exceptions` is now a package**, grouped by subsystem (`base`, `config`, `crypto`, `policy`,
+  `proxy`) and re-exported from `exceptions/__init__` — `from ranbval_sdk.exceptions import …`
+  is identical.
+
+### Docs / repo
+- Moved `security_demo.py` → `examples/security_demo.py`.
+- Updated `.ranbval.example` to the v3 prefix format (`PUBLIC_`/`SECRET_`/`PROXY_`).
+- Hardened `.gitignore` (venv variants, coverage, editor/OS files, defensive `.ranbval`/`.env`).
+
+---
+
 ## [3.3.0] - 2026-07-10
 
 ### Added
