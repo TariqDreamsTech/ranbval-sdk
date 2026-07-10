@@ -1,12 +1,37 @@
-.venv/
+# Byte-compiled / caches
 __pycache__/
-*.pyc
+*.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Build artifacts / distribution
 dist/
 build/
 *.egg-info/
 *.so
 *.c
 .cython/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+
+# Ranbval — never commit real config/secrets (the .ranbval.example template IS committed)
+.ranbval
+.ranbval.local
+.ranbval.*.local
+.env
+.env.*
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
