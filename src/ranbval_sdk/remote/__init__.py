@@ -6,6 +6,6 @@ classification + crypto pipeline. Decryption, ``SecretString``, enforcement, and
 ``PUBLIC_``/``SECRET_``/``PROXY_`` rules are unchanged — only *where the config comes from* differs.
 """
 
-from ranbval_sdk.remote.client import fetch_env_set
+from ranbval_sdk.remote.client import fetch_env_set, push_env
 
-__all__ = ["fetch_env_set"]
+__all__ = ["fetch_env_set", "push_env"]

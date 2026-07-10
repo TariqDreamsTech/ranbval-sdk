@@ -21,39 +21,67 @@ def _host(host: str | None) -> str:
     return (host or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip("/")
 
 
-def fetch_env_set(
-    *,
-    project_secret: str,
-    host: str | None = None,
-    timeout: float = 10.0,
-) -> dict[str, str]:
-    """Return ``{name: value}`` for every env var in the project this secret belongs to.
+def _credential(project_secret: str | None, api_key: str | None) -> dict:
+    """Owner uses project_secret; developer uses api_key. Exactly one is required."""
+    if project_secret and project_secret.strip():
+        return {"project_secret": project_secret.strip()}
+    if api_key and api_key.strip():
+        return {"api_key": api_key.strip()}
+    raise RanbvalConfigError(
+        "remote needs a project_secret (owner) or api_key (developer).",
+        code="remote_no_secret",
+    )
 
-    Raises :class:`RanbvalConfigError` on auth failure or an unreachable control plane.
-    """
-    if not project_secret or not project_secret.strip():
-        raise RanbvalConfigError(
-            "remote=True needs a project_secret (the ranbval-proj-… key).",
-            code="remote_no_secret",
-        )
-    url = f"{_host(host)}/api/envs/pull"
-    data = json.dumps({"project_secret": project_secret.strip()}).encode("utf-8")
+
+def _post(url: str, payload: dict, timeout: float) -> dict:
+    data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url, data=data, headers={"Content-Type": "application/json"}, method="POST"
     )
     try:
         with _transport.urlopen(req, timeout=timeout) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+            return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        detail = "Invalid or revoked project_secret." if e.code == 403 else f"HTTP {e.code}"
-        raise RanbvalConfigError(
-            f"Could not fetch env-set from {url}: {detail}", code="remote_fetch_failed"
-        ) from e
+        detail = "Invalid credential." if e.code == 403 else f"HTTP {e.code}"
+        raise RanbvalConfigError(f"{url}: {detail}", code="remote_fetch_failed") from e
     except Exception as e:
         raise RanbvalConfigError(
             f"Could not reach the Ranbval control plane at {url}: {e}",
             code="remote_unreachable",
         ) from e
 
+
+def fetch_env_set(
+    *,
+    project_secret: str | None = None,
+    api_key: str | None = None,
+    host: str | None = None,
+    timeout: float = 10.0,
+) -> dict[str, str]:
+    """Return ``{name: value}`` for every env var in the project.
+
+    Owner authenticates with ``project_secret``; a developer with ``api_key``. Raises
+    :class:`RanbvalConfigError` on auth failure or an unreachable control plane.
+    """
+    payload = _credential(project_secret, api_key)
+    body = _post(f"{_host(host)}/api/envs/pull", payload, timeout)
     envs = body.get("envs") or []
     return {e["name"]: e["value"] for e in envs if e.get("name")}
+
+
+def push_env(
+    name: str,
+    value: str,
+    *,
+    project_secret: str | None = None,
+    api_key: str | None = None,
+    host: str | None = None,
+    timeout: float = 10.0,
+) -> dict:
+    """Add a ``PUBLIC_`` env from code, attributed to the caller (owner or developer).
+
+    Only ``PUBLIC_`` names are accepted — ``SECRET_``/``PROXY_`` keys are created in the
+    dashboard (encrypted server-side). Returns ``{name, kind, added_by}``.
+    """
+    payload = {"name": name, "value": value, **_credential(project_secret, api_key)}
+    return _post(f"{_host(host)}/api/envs/add", payload, timeout)

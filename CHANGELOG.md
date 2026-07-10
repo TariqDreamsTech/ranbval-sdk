@@ -4,6 +4,18 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.3.0] - 2026-07-10
+
+### Added
+- **Developer role for remote config.** `load_ranbval(remote=True, api_key="ranbval-dev-…")` lets
+  a developer (not just the owner) fetch the project's env-set with a developer token the owner
+  issues from the dashboard. `project_secret` = owner; `api_key` = developer.
+- **`push_env(name, value, api_key=… | project_secret=…)`** — add a `PUBLIC_` env from code,
+  attributed to the caller. `SECRET_`/`PROXY_` stay owner-only (created encrypted in the dashboard).
+- `fetch_env_set` now accepts `api_key` alongside `project_secret`.
+
+---
+
 ## [3.2.0] - 2026-07-10
 
 ### Added

@@ -67,7 +67,7 @@ from ranbval_sdk.exceptions import (
     RepoPolicyError,
 )
 from ranbval_sdk.integrations.proxy import aproxy_request, proxy_request
-from ranbval_sdk.remote import fetch_env_set
+from ranbval_sdk.remote import fetch_env_set, push_env
 from ranbval_sdk.telemetry import (
     aemit_telemetry,
     emit_telemetry,
@@ -77,7 +77,7 @@ from ranbval_sdk.telemetry import (
     uninstall_access_monitor,
 )
 
-__version__ = "3.2.0"
+__version__ = "3.3.0"
 
 __all__ = [
     # Config
@@ -123,6 +123,7 @@ __all__ = [
     "aproxy_request",
     # Remote config
     "fetch_env_set",
+    "push_env",
     # Exceptions
     "RanbvalError",
     "RanbvalDecryptError",

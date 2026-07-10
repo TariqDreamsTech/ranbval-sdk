@@ -228,6 +228,7 @@ def load_ranbval(
     guard_stdout: bool = False,
     sole_loader: bool = True,
     remote: bool = False,
+    api_key: str | None = None,
     host: str | None = None,
 ) -> bool:
     """
@@ -288,9 +289,10 @@ def load_ranbval(
     **Remote config** (optional):
 
     - ``remote=True``: instead of reading local files, fetch the project's env-set from the
-      Ranbval control plane using ``project_secret`` (owner credential) and load it through the
-      same pipeline. ``SECRET_``/``PROXY_`` values arrive as encrypted ``ranbval.*`` tokens and
-      are decrypted client-side exactly as from a file. ``host`` overrides the control-plane URL.
+      Ranbval control plane and load it through the same pipeline. The owner authenticates with
+      ``project_secret``; a developer with ``api_key`` (a ``ranbval-dev-…`` token). ``SECRET_``/
+      ``PROXY_`` values arrive as encrypted ``ranbval.*`` tokens and are decrypted client-side
+      exactly as from a file. ``host`` overrides the control-plane URL.
 
     Returns True if at least one file was read (always True for a successful ``remote=True`` load).
     """
@@ -300,7 +302,7 @@ def load_ranbval(
         from ranbval_sdk.remote.client import fetch_env_set
 
         ps = (project_secret or os.environ.get("RANBVAL_PROJECT_SECRET") or "").strip()
-        merged = fetch_env_set(project_secret=ps, host=host)
+        merged = fetch_env_set(project_secret=ps or None, api_key=api_key, host=host)
         config_root = None
     elif path:
         p = Path(path)

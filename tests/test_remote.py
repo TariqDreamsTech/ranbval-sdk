@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from ranbval_sdk import fetch_env_set, load_ranbval
+from ranbval_sdk import fetch_env_set, load_ranbval, push_env
 from ranbval_sdk.exceptions import RanbvalConfigError
 
 
@@ -52,6 +52,46 @@ def test_fetch_requires_secret():
     with pytest.raises(RanbvalConfigError) as ei:
         fetch_env_set(project_secret="")
     assert ei.value.code == "remote_no_secret"
+
+
+def test_fetch_with_dev_api_key(monkeypatch):
+    captured = {}
+
+    def _fake(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode())
+        return _FakeResp({"envs": [{"name": "PUBLIC_X", "value": "1"}]})
+
+    import ranbval_sdk.remote.client as rc
+
+    monkeypatch.setattr(rc._transport, "urlopen", _fake)
+    envs = fetch_env_set(api_key="ranbval-dev-abc")
+    assert envs == {"PUBLIC_X": "1"}
+    assert captured["body"] == {"api_key": "ranbval-dev-abc"}
+
+
+def test_push_env(monkeypatch):
+    captured = {}
+
+    def _fake(req, timeout=None):
+        captured["url"] = req.get_full_url()
+        captured["body"] = json.loads(req.data.decode())
+        return _FakeResp({"name": "PUBLIC_FLAG", "kind": "public", "added_by": "dev-jane"})
+
+    import ranbval_sdk.remote.client as rc
+
+    monkeypatch.setattr(rc._transport, "urlopen", _fake)
+    out = push_env("PUBLIC_FLAG", "on", api_key="ranbval-dev-abc")
+    assert out["added_by"] == "dev-jane"
+    assert captured["url"].endswith("/api/envs/add")
+    assert captured["body"] == {"name": "PUBLIC_FLAG", "value": "on", "api_key": "ranbval-dev-abc"}
+
+
+def test_load_ranbval_remote_dev_key(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    _mock_pull(monkeypatch, {"envs": [{"name": "PUBLIC_APP", "value": "demo"}]})
+    monkeypatch.delenv("RANBVAL_PROJECT_SECRET", raising=False)
+    assert load_ranbval(remote=True, api_key="ranbval-dev-abc") is True
+    assert os.environ["PUBLIC_APP"] == "demo"
 
 
 def test_load_ranbval_remote_populates_env(monkeypatch, tmp_path):

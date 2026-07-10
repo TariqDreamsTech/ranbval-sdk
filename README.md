@@ -131,6 +131,18 @@ client = openai.OpenAI(api_key=decrypt_key("SECRET_OPENAI_KEY").use())
 `SECRET_`/`PROXY_` values come down as encrypted `ranbval.*` tokens (decrypted client-side);
 `PUBLIC_` values are plaintext. Add a key in the dashboard → it appears here on the next load.
 
+**Owner vs developer.** The owner fetches with the project secret. A developer fetches with a
+`ranbval-dev-…` token the owner issues from the dashboard, and can add `PUBLIC_` envs from code —
+attributed to them:
+
+```python
+load_ranbval(remote=True, api_key="ranbval-dev-…")          # developer fetch
+from ranbval_sdk import push_env
+push_env("PUBLIC_FEATURE_FLAG", "on", api_key="ranbval-dev-…")  # shows as "added by <dev>"
+```
+
+`SECRET_`/`PROXY_` keys stay owner-only (created encrypted in the dashboard).
+
 ---
 
 ## Module Reference
