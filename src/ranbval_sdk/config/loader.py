@@ -229,6 +229,7 @@ def load_ranbval(
     sole_loader: bool = True,
     remote: bool = False,
     api_key: str | None = None,
+    environment: str | None = None,
     host: str | None = None,
 ) -> bool:
     """
@@ -293,6 +294,11 @@ def load_ranbval(
       ``project_secret``; a developer with ``api_key`` (a ``ranbval-dev-…`` token). ``SECRET_``/
       ``PROXY_`` values arrive as encrypted ``ranbval.*`` tokens and are decrypted client-side
       exactly as from a file. ``host`` overrides the control-plane URL.
+    - ``environment``: which stage to pull — ``"development"``, ``"staging"``, ``"production"``,
+      … (a project may define up to 10). Defaults to the ``RANBVAL_ENV`` environment variable,
+      then to the project's first environment. Only that stage's values are fetched, so the same
+      name (``SECRET_OPENAI_KEY``, ``PUBLIC_DATABASE_URL``) resolves to a different value per
+      stage and production credentials never reach a development machine.
 
     Returns True if at least one file was read (always True for a successful ``remote=True`` load).
     """
@@ -302,7 +308,12 @@ def load_ranbval(
         from ranbval_sdk.remote.client import fetch_env_set
 
         ps = (project_secret or os.environ.get("RANBVAL_PROJECT_SECRET") or "").strip()
-        merged = fetch_env_set(project_secret=ps or None, api_key=api_key, host=host)
+        merged = fetch_env_set(
+            project_secret=ps or None,
+            api_key=api_key,
+            environment=environment,
+            host=host,
+        )
         config_root = None
     elif path:
         p = Path(path)

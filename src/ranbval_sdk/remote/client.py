@@ -51,19 +51,33 @@ def _post(url: str, payload: dict, timeout: float) -> dict:
         ) from e
 
 
+def _environment(environment: str | None) -> str | None:
+    """The stage to pull. Falls back to ``RANBVAL_ENV``; ``None`` = the project's first."""
+    env = (environment or os.environ.get("RANBVAL_ENV") or "").strip()
+    return env or None
+
+
 def fetch_env_set(
     *,
     project_secret: str | None = None,
     api_key: str | None = None,
+    environment: str | None = None,
     host: str | None = None,
     timeout: float = 10.0,
 ) -> dict[str, str]:
-    """Return ``{name: value}`` for every env var in the project.
+    """Return ``{name: value}`` for every env var in **one environment** of the project.
+
+    ``environment`` selects the stage — ``"development"``, ``"staging"``, ``"production"``, … —
+    and defaults to ``RANBVAL_ENV``, then to the project's first environment. Only that stage's
+    values come back, so a developer machine never receives production credentials.
 
     Owner authenticates with ``project_secret``; a developer with ``api_key``. Raises
     :class:`RanbvalConfigError` on auth failure or an unreachable control plane.
     """
     payload = _credential(project_secret, api_key)
+    env = _environment(environment)
+    if env:
+        payload["environment"] = env
     body = _post(f"{_host(host)}/api/envs/pull", payload, timeout)
     envs = body.get("envs") or []
     return {e["name"]: e["value"] for e in envs if e.get("name")}
@@ -75,13 +89,18 @@ def push_env(
     *,
     project_secret: str | None = None,
     api_key: str | None = None,
+    environment: str | None = None,
     host: str | None = None,
     timeout: float = 10.0,
 ) -> dict:
-    """Add a ``PUBLIC_`` env from code, attributed to the caller (owner or developer).
+    """Add a ``PUBLIC_`` env to one environment, attributed to the caller (owner or developer).
 
-    Only ``PUBLIC_`` names are accepted — ``SECRET_``/``PROXY_`` keys are created in the
-    dashboard (encrypted server-side). Returns ``{name, kind, added_by}``.
+    ``environment`` defaults to ``RANBVAL_ENV``, then the project's first stage. Only ``PUBLIC_``
+    names are accepted — ``SECRET_``/``PROXY_`` keys are created in the dashboard (encrypted
+    server-side). Returns ``{name, kind, added_by}``.
     """
     payload = {"name": name, "value": value, **_credential(project_secret, api_key)}
+    env = _environment(environment)
+    if env:
+        payload["environment"] = env
     return _post(f"{_host(host)}/api/envs/add", payload, timeout)

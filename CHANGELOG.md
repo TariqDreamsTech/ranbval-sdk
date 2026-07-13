@@ -4,6 +4,24 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.5.0] - 2026-07-13
+
+### Added
+- **Environments (stages).** A project now holds up to 10 named environments — `development`,
+  `staging`, `production`, … — and every key and `PUBLIC_` value lives in one of them. Pull a
+  single stage:
+
+  ```python
+  load_ranbval(remote=True, environment="production")   # or set RANBVAL_ENV=production
+  ```
+
+  `fetch_env_set(..., environment=...)` and `push_env(..., environment=...)` take the same
+  argument. Selection falls back to the `RANBVAL_ENV` variable, then to the project's first
+  environment — so existing code keeps working unchanged.
+
+  The same name (`SECRET_OPENAI_KEY`, `PUBLIC_DATABASE_URL`) now resolves to a different value per
+  stage, and a development machine never receives production credentials.
+
 ## [3.4.1] - 2026-07-13
 
 ### Fixed
