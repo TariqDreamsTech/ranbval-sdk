@@ -4,6 +4,12 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.4.1] - 2026-07-13
+
+### Fixed
+- README refreshed for PyPI: version badge (was showing 2.2.1) and outdated `[public]`/`[secrets]`
+  section docs replaced with the prefix-classification model (`PUBLIC_`/`SECRET_`/`PROXY_`).
+
 ## [3.4.0] - 2026-07-13
 
 ### Changed

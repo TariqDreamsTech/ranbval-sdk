@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v2.2.1`
+# Ranbval SDK `v3.4.1`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
@@ -69,7 +69,7 @@ from three other things, and Ranbval gives you all three:
 - **Drop-in.** One `load_ranbval()` replaces scattered `load_dotenv()`; keys pass straight into
   your existing SDKs — Ranbval ships no vendor dependencies.
 - **Safe by default.** Secrets are sealed `SecretString`s that refuse to print, log, or serialize;
-  plain config is opt-in plaintext via `[public]` sections and `public()`.
+  plain config is opt-in plaintext via `PUBLIC_` name prefixes and `public()`.
 - **Accountable.** Every decrypt is attributable, and misuse is detectable — something a plain
   `.env` can never offer.
 
@@ -762,7 +762,7 @@ decrypted server-side and never returned to your process at all.
 
 ## `.ranbval` File Format
 
-`.ranbval` files follow the same `KEY=VALUE` format as `.env` files. Lines starting with `#` are comments. Blank lines are ignored. Optional `[public]` / `[secrets]` section headers group keys (see above).
+`.ranbval` files follow the same `KEY=VALUE` format as `.env` files. Lines starting with `#` are comments. Blank lines are ignored. Every key declares its class by name prefix — `PUBLIC_` (plaintext), `SECRET_` (sealed `ranbval.*` tokens), or `PROXY_` (proxy-only); `[section]` headers are not supported.
 
 ```bash
 # Plain value — stored and used as-is
