@@ -145,11 +145,59 @@ push_env("PUBLIC_FEATURE_FLAG", "on", api_key="ranbval-dev-…")  # shows as "ad
 
 ---
 
+## Environments (dev / staging / production)
+
+A project holds up to **10 named environments**, and every key and `PUBLIC_` value lives in one of
+them. The *same name* therefore holds a *different value* per stage:
+
+```
+project "My App"
+  ├── development   SECRET_OPENAI_KEY=ranbval.…   PUBLIC_DATABASE_URL=postgres://dev…
+  ├── staging       SECRET_OPENAI_KEY=ranbval.…   PUBLIC_DATABASE_URL=postgres://stg…
+  └── production    SECRET_OPENAI_KEY=ranbval.…   PUBLIC_DATABASE_URL=postgres://prod…
+```
+
+Pull exactly one:
+
+```python
+load_ranbval(remote=True, environment="production")
+client = openai.OpenAI(api_key=decrypt_key("SECRET_OPENAI_KEY").use())  # production's key
+```
+
+Only that stage's values are fetched — **production credentials never reach a development
+machine**, even if the developer's token is valid for the project.
+
+**How the stage is chosen** — explicit argument first, then the environment:
+
+```python
+load_ranbval(remote=True, environment="staging")   # 1. explicit
+# else RANBVAL_ENV / ENVIRONMENT / ENV             # 2. from the environment
+# else the project's first environment             # 3. server default
+```
+
+```bash
+export RANBVAL_ENV=production   # CI / server sets this once; code stays identical
+```
+
+`RANBVAL_ENV` is the same variable that picks a local `.ranbval.{mode}` file — one idea ("which
+stage am I running in"), one variable, whether the config comes from disk or the control plane.
+
+`push_env` takes the same argument, so a developer can add a `PUBLIC_` value to one stage:
+
+```python
+push_env("PUBLIC_FEATURE_FLAG", "on", api_key="ranbval-dev-…", environment="staging")
+```
+
+Environments are created, renamed, and deleted from the dashboard. Deleting one deletes every key
+and `PUBLIC_` value inside it; a project always keeps at least one.
+
+---
+
 ## Module Reference
 
 | Symbol | Description |
 |--------|-------------|
-| `load_ranbval()` | Merges layered `.ranbval*` files into `os.environ` |
+| `load_ranbval()` | Merges layered `.ranbval*` files into `os.environ`; `remote=True, environment="…"` pulls one stage from the control plane |
 | `public()` | Read a plaintext (unencrypted) config value — never decrypts |
 | `public_config()` | Dict of every `PUBLIC_`-prefixed key as `{name: plaintext}` |
 | `proxy_token()` | Raw encrypted token for a `PROXY_` key — pass to `proxy_request()` (never decrypted client-side) |
@@ -826,6 +874,7 @@ RANBVAL_PROJECT_SECRET=your_project_secret_from_dashboard
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RANBVAL_HOST` | `https://api.secret.ranbval.com` | Ranbval API base URL |
+| `RANBVAL_ENV` | *(project's first)* | Which stage to use — picks the local `.ranbval.{mode}` file **and** the remote environment to pull |
 | `RANBVAL_ENV` | `development` | Active mode for layered config |
 | `RANBVAL_PROJECT_SECRET` | *(required)* | Project secret for `safe_decrypt()` / `decrypt_key()` |
 | `RANBVAL_TELEMETRY_DEBUG` | `0` | `1` = print telemetry errors to stderr |

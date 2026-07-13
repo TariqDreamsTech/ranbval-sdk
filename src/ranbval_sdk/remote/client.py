@@ -51,10 +51,24 @@ def _post(url: str, payload: dict, timeout: float) -> dict:
         ) from e
 
 
+#: The same variables that select a local ``.ranbval.{mode}`` file also select the remote stage —
+#: one idea ("which stage am I running in"), one variable.
+_ENV_VARS = ("RANBVAL_ENV", "ENVIRONMENT", "ENV")
+
+
 def _environment(environment: str | None) -> str | None:
-    """The stage to pull. Falls back to ``RANBVAL_ENV``; ``None`` = the project's first."""
-    env = (environment or os.environ.get("RANBVAL_ENV") or "").strip()
-    return env or None
+    """The stage to pull: explicit arg → ``RANBVAL_ENV`` → ``ENVIRONMENT`` → ``ENV``.
+
+    Unlike the local mode there is **no** ``development`` default: ``None`` means "let the server
+    use the project's first environment", so a project that never named its stages still works.
+    """
+    if environment and str(environment).strip():
+        return str(environment).strip().lower()
+    for key in _ENV_VARS:
+        v = os.environ.get(key)
+        if v and str(v).strip():
+            return str(v).strip().lower()
+    return None
 
 
 def fetch_env_set(
