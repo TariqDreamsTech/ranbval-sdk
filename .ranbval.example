@@ -13,7 +13,7 @@
 
 # --- .ranbval (shared defaults, safe to commit — no secrets here) ---
 PUBLIC_APP_NAME=my-app
-# RANBVAL_HOST=https://api.ranbval.com
+# RANBVAL_HOST=https://api.secret.ranbval.com
 
 # --- .ranbval.development (RANBVAL_ENV=development, or load_ranbval(mode="development")) ---
 # RANBVAL_HOST=http://127.0.0.1:8006

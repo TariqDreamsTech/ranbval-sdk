@@ -92,7 +92,7 @@ def test_infra_keys_exempt(tmp_path, monkeypatch):
     # RANBVAL_* and *_PROJECT_SECRET need no class prefix.
     (tmp_path / ".ranbval").write_text(
         "RANBVAL_PROJECT_SECRET=proj-xxx\nMYAPP_PROJECT_SECRET=proj-yyy\n"
-        "RANBVAL_HOST=https://api.ranbval.com\nPUBLIC_X=1\n",
+        "RANBVAL_HOST=https://api.secret.ranbval.com\nPUBLIC_X=1\n",
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)

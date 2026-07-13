@@ -31,9 +31,9 @@ classifiers = [
 ranbval = "ranbval_sdk.cli:main"
 
 [project.urls]
-Homepage = "https://www.ranbval.com"
+Homepage = "https://secret.ranbval.com"
 Repository = "https://github.com/TariqDreamsTech/ranbval-sdk"
-Documentation = "https://api.ranbval.com/docs"
+Documentation = "https://api.secret.ranbval.com/docs"
 
 [tool.poetry]
 # src layout: tell the builder where the package lives, and ship the PEP 561 marker.

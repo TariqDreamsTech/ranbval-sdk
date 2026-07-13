@@ -825,7 +825,7 @@ RANBVAL_PROJECT_SECRET=your_project_secret_from_dashboard
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RANBVAL_HOST` | `https://api.ranbval.com` | Ranbval API base URL |
+| `RANBVAL_HOST` | `https://api.secret.ranbval.com` | Ranbval API base URL |
 | `RANBVAL_ENV` | `development` | Active mode for layered config |
 | `RANBVAL_PROJECT_SECRET` | *(required)* | Project secret for `safe_decrypt()` / `decrypt_key()` |
 | `RANBVAL_TELEMETRY_DEBUG` | `0` | `1` = print telemetry errors to stderr |
@@ -847,7 +847,7 @@ No Python needed. Use two **HTTP Request** nodes in your n8n workflow:
 **Node 2** — Telemetry log to Ranbval:
 
 ```
-POST https://api.ranbval.com/api/telemetry
+POST https://api.secret.ranbval.com/api/telemetry
 Content-Type: application/json
 
 {
@@ -912,6 +912,6 @@ MIT — see [LICENSE](LICENSE).
 ## Links
 
 - PyPI: [pypi.org/project/ranbval-sdk](https://pypi.org/project/ranbval-sdk/)
-- Dashboard: [ranbval.com](https://www.ranbval.com)
-- API docs: [api.ranbval.com/docs](https://api.ranbval.com/docs)
+- Dashboard: [ranbval.com](https://secret.ranbval.com)
+- API docs: [api.secret.ranbval.com/docs](https://api.secret.ranbval.com/docs)
 - Repository: [github.com/TariqDreamsTech/ranbval-sdk](https://github.com/TariqDreamsTech/ranbval-sdk)
