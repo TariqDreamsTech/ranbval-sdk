@@ -101,7 +101,7 @@ def proxy_request(
         the project secret when ``project_secret`` is omitted.
     host_url:
         Override the Ranbval server. Defaults to ``RANBVAL_HOST`` env var or
-        ``https://api.ranbval.com``.
+        ``https://api.secret.ranbval.com``.
 
     Returns
     -------

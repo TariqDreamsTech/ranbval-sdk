@@ -4,6 +4,15 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.4.0] - 2026-07-13
+
+### Changed
+- **Default API host moved to `https://api.secret.ranbval.com`** (was `https://api.ranbval.com`).
+  The Ranbval secret manager now lives under the `secret.ranbval.com` namespace. Override with
+  `RANBVAL_HOST` if needed. Set `RANBVAL_HOST` explicitly to pin the old host during transition.
+
+---
+
 ## [3.3.1] - 2026-07-10
 
 Internal restructuring + repo hygiene. **No public API or behaviour change** — every symbol,
