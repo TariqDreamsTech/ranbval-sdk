@@ -4,6 +4,17 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.5.1] - 2026-07-13
+
+### Changed
+- Remote environment selection now uses the **same** chain as the local mode:
+  explicit `environment=` → `RANBVAL_ENV` → `ENVIRONMENT` → `ENV`. One variable means one thing
+  ("which stage am I running in") whether the config comes from disk or the control plane. There
+  is deliberately no `development` default remotely — unset means "the project's first environment".
+
+### Docs
+- README documents environments (stages), stage selection, and `push_env(environment=…)`.
+
 ## [3.5.0] - 2026-07-13
 
 ### Added
