@@ -2,8 +2,8 @@
 # [tool.poetry] block below only carries build-time bits that have no PEP 621 field.
 [project]
 name = "ranbval-sdk"
-version = "3.5.1"
-description = "Keep API secrets out of plaintext config: layered .ranbval* env files, decrypt vault tokens only when used, with built-in repo-allowlist enforcement and automatic usage telemetry to the Live Monitor—minimal deps, your own HTTP/SDK stack."
+version = "3.5.2"
+description = "Secrets that refuse to be stolen: API keys sealed with AES-256-GCM that decrypt only on your allowlisted repo, raise a security error if anything tries to print or read them, and alert you on every access attempt."
 authors = [
     { name = "Ahsan Tariq" },
     { name = "Hussnain Tariq" },
@@ -13,18 +13,33 @@ authors = [
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
+keywords = [
+    "secrets", "secret-manager", "secrets-management", "api-keys", "credentials",
+    "vault", "encryption", "aes-256-gcm", "security", "devsecops",
+    "dotenv", "env", "environment-variables", "configuration",
+    "openai", "api-key-management", "leak-detection",
+]
 dependencies = [
     "cryptography>=42.0.0",
     "certifi>=2024.0.0",
 ]
 classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
+    "Environment :: Console",
     "Topic :: Security",
     "Topic :: Security :: Cryptography",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Systems Administration",
+    "Typing :: Typed",
 ]
 
 [project.scripts]
@@ -32,8 +47,11 @@ ranbval = "ranbval_sdk.cli:main"
 
 [project.urls]
 Homepage = "https://secret.ranbval.com"
+Documentation = "https://github.com/TariqDreamsTech/ranbval-sdk#readme"
 Repository = "https://github.com/TariqDreamsTech/ranbval-sdk"
-Documentation = "https://api.secret.ranbval.com/docs"
+Changelog = "https://github.com/TariqDreamsTech/ranbval-sdk/blob/main/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/TariqDreamsTech/ranbval-sdk/issues"
+Company = "https://ranbval.com"
 
 [tool.poetry]
 # src layout: tell the builder where the package lives, and ship the PEP 561 marker.

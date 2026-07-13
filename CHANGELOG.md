@@ -4,6 +4,17 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.5.2] - 2026-07-13
+
+### Fixed
+- **The `Documentation` link on PyPI was a 404** — it pointed at `api.secret.ranbval.com/docs`,
+  which the API deliberately does not serve. It now points at the README.
+
+### Added
+- Package **keywords** (there were none, so PyPI search never surfaced the project) and a fuller
+  classifier set; `Bug Tracker`, `Changelog`, and `Company` project links.
+- A summary that says what the library actually does.
+
 ## [3.5.1] - 2026-07-13
 
 ### Changed
