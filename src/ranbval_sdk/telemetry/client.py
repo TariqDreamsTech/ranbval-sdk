@@ -12,6 +12,7 @@ import json
 import os
 import socket
 import threading
+import time
 import urllib.request
 from typing import Any
 from urllib.parse import urlparse
@@ -27,6 +28,29 @@ from ranbval_sdk.serializers.telemetry import build_telemetry_payload
 # ``from ranbval_sdk.telemetry.client import salt_from_ranbval_token`` must keep working.
 from ranbval_sdk.serializers.token import salt_from_ranbval_token  # noqa: F401
 from ranbval_sdk.telemetry.context import collect_client_context
+
+
+#: Background emits that have not landed yet. Joined at exit so a short-lived process — the shape
+#: every credential theft takes — still reports the use that would trip a canary.
+_inflight: "set[threading.Thread]" = set()
+_inflight_lock = threading.Lock()
+
+
+def flush_inflight(timeout: float = 3.0) -> None:
+    """Wait, briefly, for in-flight telemetry to land. Best-effort and strictly bounded.
+
+    Bounded because the alternative is worse: a non-daemon thread would hang the process on a slow
+    or unreachable control plane, and a security tool that can freeze your app on exit will simply
+    be removed.
+    """
+    deadline = time.monotonic() + timeout
+    with _inflight_lock:
+        threads = list(_inflight)
+    for t in threads:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        t.join(remaining)
 
 
 def emit_telemetry(
@@ -111,9 +135,23 @@ def emit_telemetry(
                 resp.read()
         except Exception as e:
             warn_telemetry_send_failed(h, e)
+        finally:
+            with _inflight_lock:
+                _inflight.discard(threading.current_thread())
 
     if background:
-        threading.Thread(target=_post, daemon=True).start()
+        # Daemon, so a hung control plane can never stop the host process from exiting. But daemon
+        # threads are KILLED at interpreter shutdown — so a short-lived process would drop this
+        # event entirely, and the first use of a credential is exactly the event that matters: it is
+        # the one a canary fires on. A theft is a smash-and-grab
+        # (`python -c "print(decrypt_key('SECRET_X').use())"`), which is precisely the case that
+        # exits too fast to send. The alarm stayed silent exactly when it was needed.
+        #
+        # So we track the thread and join it, briefly, at exit (see flush_inflight).
+        t = threading.Thread(target=_post, daemon=True)
+        with _inflight_lock:
+            _inflight.add(t)
+        t.start()
     else:
         _post()
 

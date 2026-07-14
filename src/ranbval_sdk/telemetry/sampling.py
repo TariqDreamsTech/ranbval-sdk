@@ -97,8 +97,18 @@ usage_sampler = AdaptiveSampler()
 
 @atexit.register
 def _flush_on_exit() -> None:
-    """Best-effort synchronous flush so no aggregated usage is lost when the process ends."""
+    """Best-effort flush so no usage is lost when the process ends.
+
+    Two halves, and only the first one used to exist:
+      1. aggregated repeats, sent synchronously here;
+      2. the FIRST use of each credential, which was already dispatched on a daemon thread and would
+         otherwise be killed mid-POST by interpreter shutdown. That is the event a canary fires on.
+    """
     _emit_aggregates(usage_sampler.flush_pending(), background=False)
+
+    from ranbval_sdk.telemetry.client import flush_inflight
+
+    flush_inflight()
 
 
 __all__ = ["AdaptiveSampler", "usage_sampler"]
