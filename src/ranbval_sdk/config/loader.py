@@ -326,7 +326,12 @@ def load_ranbval(
         if not root:
             return False
         config_root = root
-        m = resolve_ranbval_mode(mode)
+        # `environment` is the word the dashboard, the docs and the .ranbval header all use, and it
+        # is what people pass. It used to be read ONLY on the remote path, so a local
+        # `load_ranbval(environment="production")` silently fell back to development and loaded the
+        # wrong stage — no error, no warning, just the wrong database URL. `mode` is the older name
+        # for the same thing, so it still wins when both are given.
+        m = resolve_ranbval_mode(mode or environment)
         layers = _layer_paths(root, m)
         if not layers:
             return False
