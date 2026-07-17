@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v3.5.2`
+# Ranbval SDK `v3.5.3`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
@@ -49,6 +49,7 @@ Be clear-eyed about the threat model — it's what makes the guarantees trustwor
 | Config file copied / shared | 🔴 works anywhere, forever | 🟢 **useless without the project secret *and* an allowlisted repo** |
 | Key printed to logs / captured by Sentry | 🔴 sits in log storage for years | 🟢 `SecretString` masks every display path; can't be pickled into a cache/report |
 | A key leaks — who? which repo? | 🔴 zero visibility | 🟢 **Live Monitor** flags the same credential on a new device/IP → rotate with proof |
+| A thief probes a stolen config | 🔴 no way to know | 🟢 a [**canary key**](#canary-keys--a-decoy-that-only-a-thief-would-ever-touch) is a decoy — the moment they decrypt it, you get the alert |
 
 The crown jewel is the **repo allowlist**: even if someone steals your entire `.ranbval` file
 *and* your project secret, they still can't decrypt it from a repo that isn't on your
@@ -62,7 +63,9 @@ from three other things, and Ranbval gives you all three:
 
 1. **The key isn't lying in the street** → plaintext never touches Git (encrypted tokens).
 2. **The key only works at your house** → the repo allowlist makes a stolen file worthless elsewhere.
-3. **An alarm rings if a stranger walks in** → leak detection alerts on a new device/IP.
+3. **An alarm rings if a stranger walks in** → leak detection alerts on a new device/IP, and a
+   [canary key](#canary-keys--a-decoy-that-only-a-thief-would-ever-touch) is a decoy that turns
+   *any* use into a confirmed-theft alert.
 
 ### Why use it
 
@@ -181,6 +184,9 @@ export RANBVAL_ENV=production   # CI / server sets this once; code stays identic
 
 `RANBVAL_ENV` is the same variable that picks a local `.ranbval.{mode}` file — one idea ("which
 stage am I running in"), one variable, whether the config comes from disk or the control plane.
+The `environment=` argument works the same way for **local files too**: `load_ranbval(environment=
+"production")` (no `remote=`) merges `.ranbval` then `.ranbval.production`, so the stage is chosen
+identically whether you read from disk or the server.
 
 `push_env` takes the same argument, so a developer can add a `PUBLIC_` value to one stage:
 
@@ -805,6 +811,46 @@ deliberately do **not** fake-guard them:
 
 The one true "value never on the client" answer is the [proxy](#proxy_request) — the real key is
 decrypted server-side and never returned to your process at all.
+
+---
+
+## Canary keys — a decoy that only a thief would ever touch
+
+Leak detection tells you a *real* key showed up somewhere new, and asks you to judge whether that
+new device or IP is suspicious. A **canary** removes the judgement call: it is a decoy key your
+code never uses, so **any** use of it is theft — with zero false positives, and nothing to
+interpret.
+
+Mark a key as a canary in the dashboard. In your `.ranbval` it looks exactly like every other
+sealed token — that is the point; a thief who steals the file cannot tell the bait from the real
+keys:
+
+```
+SECRET_STRIPE_KEY=ranbval.7727i722a0.U6pwpmYVwYv….ahsan   # ← a canary, indistinguishable
+SECRET_OPENAI_KEY=ranbval.a772a0a2ai.QNFncB7Dp4E….ahsan   # ← a real key
+```
+
+Your application never references `SECRET_STRIPE_KEY`, so it never fires. But a thief who steals
+the `.ranbval` has no way to know which keys are live, and the moment they run
+`decrypt_key("SECRET_STRIPE_KEY")` to find out, the alarm goes off — with the IP:
+
+```
+🚨 CONFIRMED credential theft — your canary key 'SECRET_STRIPE_KEY' was just
+   used from IP 100.64.0.19. Canary keys are decoys that legitimate code never touches.
+```
+
+Two properties worth knowing:
+
+- **It fires even on a smash-and-grab.** The classic theft is a one-liner —
+  `python -c "print(decrypt_key('SECRET_STRIPE_KEY').use())"` — that exits immediately. The alert
+  still lands: the first use of a credential is reported before the process is allowed to die.
+- **A canary must be `SECRET_`, never `PROXY_`.** A canary catches a thief *because they can
+  decrypt it*. A `PROXY_` value can never be decrypted locally, so a `PROXY_` canary is a trap
+  whose jaws are welded shut — the thief's attempt is refused, nothing is reported, and you learn
+  nothing. The dashboard refuses the combination outright.
+
+Give a canary a name a thief would reach for first — `SECRET_STRIPE_KEY`, `SECRET_AWS_SECRET_KEY` —
+not `SECRET_TEST`. Bait that nobody grabs is not bait.
 
 ---
 

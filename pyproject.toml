@@ -2,7 +2,7 @@
 # [tool.poetry] block below only carries build-time bits that have no PEP 621 field.
 [project]
 name = "ranbval-sdk"
-version = "3.5.2"
+version = "3.5.3"
 description = "Secrets that refuse to be stolen: API keys sealed with AES-256-GCM that decrypt only on your allowlisted repo, raise a security error if anything tries to print or read them, and alert you on every access attempt."
 authors = [
     { name = "Ahsan Tariq" },
