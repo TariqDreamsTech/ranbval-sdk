@@ -4,6 +4,28 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.5.4] - 2026-07-18
+
+### Added
+- **Commit-safety guard.** `load_ranbval()` refuses to run (`RanbvalConfigError`, code
+  `secret_file_committable`) if a `.ranbval*` file holding a `*_PROJECT_SECRET` line is **not
+  git-ignored** — the root key must never be one `git add` from a public repo. Verified with
+  `git check-ignore` (honours global/nested/negated rules). Also catches the mistake of leaving the
+  secret line in the committed `.ranbval`. Silent outside a git repo. Override with
+  `RANBVAL_ALLOW_COMMITTABLE_SECRET=1`.
+
+## [3.5.3] - 2026-07-14
+
+### Fixed
+- **`load_ranbval(environment=…)` selected the wrong stage for local files.** `environment` was
+  read only on the remote path, so a local call silently fell back to `development` and loaded the
+  wrong stage — no error, wrong values. It now selects the stage for local files too (`mode` remains
+  the older alias, and wins if both are given).
+- **Telemetry could be lost on a fast process exit.** The first use of a credential was dispatched
+  on a daemon thread that the interpreter kills at shutdown, so a short-lived process
+  (`python -c "…decrypt…"`) dropped the event — exactly the smash-and-grab a canary must catch.
+  In-flight telemetry is now joined at exit (bounded), so the canary alert fires even on a one-liner.
+
 ## [3.5.2] - 2026-07-13
 
 ### Fixed
