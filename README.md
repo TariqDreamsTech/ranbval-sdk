@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v3.5.3`
+# Ranbval SDK `v3.5.4`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
@@ -117,6 +117,23 @@ ranbval run -- python app.py  # load .ranbval into the env, then run (secrets on
 ```
 
 `ranbval check` exits non-zero on errors, so drop it into CI or a pre-commit hook.
+
+## The project secret can't be committed by accident
+
+`load_ranbval()` refuses to run if the file holding your project secret is **not git-ignored**. The
+project secret is the root key that unseals every token, so a committable secret file is the whole
+vault one `git add` away from a public repo — the exact leak Ranbval exists to prevent.
+
+```
+RanbvalConfigError: .ranbval.local holds your project secret but is NOT git-ignored — one
+`git add` from leaking the key that unseals every token. Fix it before anything else:
+    echo '.ranbval.local' >> .gitignore
+```
+
+`.ranbval` itself is safe to commit — only sealed tokens live there — so the guard fires only on the
+file that actually carries the secret (normally `.ranbval.local`), and it also catches the mistake of
+putting the secret line *in* the committed `.ranbval`. Outside a git repo there's nothing to commit
+into, so it stays silent. Override with `RANBVAL_ALLOW_COMMITTABLE_SECRET=1` for unusual setups.
 
 ## Remote config (no local file)
 

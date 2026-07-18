@@ -140,6 +140,75 @@ def _layer_paths(directory: Path, mode: str) -> list[Path]:
     return [p for p in candidates if p.is_file()]
 
 
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def _file_holds_project_secret(path: Path) -> bool:
+    """True if the file has a ``*_PROJECT_SECRET=`` line — the root key that unseals everything."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        name = stripped.split("=", 1)[0].strip().upper()
+        if name == "RANBVAL_PROJECT_SECRET" or name.endswith("_PROJECT_SECRET"):
+            return True
+    return False
+
+
+def _git_would_commit(path: Path) -> bool:
+    """True if git would track this file — i.e. it is NOT ignored.
+
+    ``git check-ignore -q`` is the source of truth (it honours global, nested and negated rules):
+    exit 0 = ignored (safe), 1 = not ignored (committable), anything else (128 = not a repo, or git
+    missing) = there is no commit to leak into, so no risk here.
+    """
+    import subprocess  # noqa: PLC0415 — only needed on this guard path
+
+    try:
+        result = subprocess.run(  # nosec B603, B607 — fixed argv, no shell
+            ["git", "check-ignore", "-q", str(path)],
+            cwd=str(path.parent),
+            capture_output=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False  # git unavailable / errored — we can't prove it's committable
+    return result.returncode == 1
+
+
+def _assert_secret_not_committable(paths: list[Path]) -> None:
+    """Refuse to run if a file holding the project secret could be committed to git.
+
+    The project secret is the root key that unseals every ``ranbval.*`` token. If the file carrying
+    it is not git-ignored, the whole vault is one ``git add`` away from a public repo — the exact
+    leak Ranbval exists to prevent, and the exact mistake of putting the secret in a committed file.
+    So we stop here, loudly, instead of letting the app start over a live landmine.
+
+    ``.ranbval`` itself is safe to commit — only sealed tokens live there. This guard fires only on
+    the file that actually holds the secret (normally ``.ranbval.local``). Set
+    ``RANBVAL_ALLOW_COMMITTABLE_SECRET=1`` to override for unusual setups.
+    """
+    if os.environ.get("RANBVAL_ALLOW_COMMITTABLE_SECRET", "").strip().lower() in _TRUTHY:
+        return
+    exposed = [p for p in paths if _file_holds_project_secret(p) and _git_would_commit(p)]
+    if not exposed:
+        return
+    names = ", ".join(sorted({p.name for p in exposed}))
+    first = exposed[0].name
+    raise RanbvalConfigError(
+        f"{names} holds your project secret but is NOT git-ignored — one `git add` from leaking "
+        f"the key that unseals every token. Fix it before anything else:\n"
+        f"    echo '{first}' >> .gitignore\n"
+        f"(.ranbval itself is safe to commit — only sealed tokens live there; this guard is about "
+        f"the file with the secret.) To override: RANBVAL_ALLOW_COMMITTABLE_SECRET=1",
+        code="secret_file_committable",
+    )
+
+
 def find_ranbval_directory(start: Path | str | None = None) -> Path | None:
     """
     Nearest directory (cwd → parents) that contains ``.ranbval`` or any ``.ranbval.*`` file.
@@ -319,6 +388,7 @@ def load_ranbval(
         p = Path(path)
         if not p.is_file():
             return False
+        _assert_secret_not_committable([p])
         config_root = p.parent
         merged = _parse_ranbval_file(p)
     else:
@@ -335,6 +405,8 @@ def load_ranbval(
         layers = _layer_paths(root, m)
         if not layers:
             return False
+        # Before anything else: if a file holding the project secret is committable, stop.
+        _assert_secret_not_committable(layers)
         merged = {}
         for layer_path in layers:
             merged.update(_parse_ranbval_file(layer_path))
