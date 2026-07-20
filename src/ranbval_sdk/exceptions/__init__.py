@@ -30,12 +30,14 @@ re-exported here, so ``from ranbval_sdk.exceptions import RanbvalConfigError`` i
 - :mod:`~ranbval_sdk.exceptions.crypto` — :class:`RanbvalDecryptError`, :class:`RanbvalSecurityError`
 - :mod:`~ranbval_sdk.exceptions.policy` — :class:`RepoNotAllowedError`, :class:`RepoPolicyError`
 - :mod:`~ranbval_sdk.exceptions.proxy`  — :class:`ProxyError`
+- :mod:`~ranbval_sdk.exceptions.plan`   — :class:`PlanLimitError`
 """
 
 from ranbval_sdk.exceptions.base import RanbvalError
 from ranbval_sdk.exceptions.config import MissingKeyError, RanbvalConfigError
 from ranbval_sdk.exceptions.crypto import RanbvalDecryptError, RanbvalSecurityError
 from ranbval_sdk.exceptions.policy import RepoNotAllowedError, RepoPolicyError
+from ranbval_sdk.exceptions.plan import PlanLimitError
 from ranbval_sdk.exceptions.proxy import ProxyError
 
 __all__ = [
@@ -46,5 +48,6 @@ __all__ = [
     "RanbvalSecurityError",
     "RepoNotAllowedError",
     "RepoPolicyError",
+    "PlanLimitError",
     "ProxyError",
 ]

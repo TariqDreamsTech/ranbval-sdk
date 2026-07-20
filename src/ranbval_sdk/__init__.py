@@ -58,6 +58,7 @@ from ranbval_sdk.crypto import (
 )
 from ranbval_sdk.exceptions import (
     MissingKeyError,
+    PlanLimitError,
     ProxyError,
     RanbvalConfigError,
     RanbvalDecryptError,
@@ -67,7 +68,7 @@ from ranbval_sdk.exceptions import (
     RepoPolicyError,
 )
 from ranbval_sdk.integrations.proxy import aproxy_request, proxy_request
-from ranbval_sdk.remote import fetch_env_set, push_env
+from ranbval_sdk.remote import fetch_env_set, plan_status, push_env
 from ranbval_sdk.telemetry import (
     aemit_telemetry,
     emit_telemetry,
@@ -77,7 +78,7 @@ from ranbval_sdk.telemetry import (
     uninstall_access_monitor,
 )
 
-__version__ = "3.5.4"
+__version__ = "3.6.0"
 
 __all__ = [
     # Config
@@ -123,6 +124,7 @@ __all__ = [
     "aproxy_request",
     # Remote config
     "fetch_env_set",
+    "plan_status",
     "push_env",
     # Exceptions
     "RanbvalError",
@@ -131,6 +133,7 @@ __all__ = [
     "MissingKeyError",
     "RepoNotAllowedError",
     "RepoPolicyError",
+    "PlanLimitError",
     "ProxyError",
     "RanbvalSecurityError",
 ]

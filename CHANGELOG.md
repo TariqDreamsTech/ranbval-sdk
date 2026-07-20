@@ -4,6 +4,49 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.6.0] - 2026-07-20
+
+### Added
+
+- **`plan_status()`** — what plan a project is on, what it allows, and how much of it is used this
+  month. Authenticated with the credentials the SDK already has (`project_secret` or `api_key`);
+  a `null` limit means unlimited on that plan.
+
+  ```python
+  from ranbval_sdk import plan_status
+
+  s = plan_status(project_secret="ps_...")
+  s["plan"]                          # "free"
+  s["limits"]["requests_month"]      # 1000
+  s["usage"]["requests_remaining"]   # 588
+  s["enforced"]                      # False while billing is switched off
+  ```
+
+- **`PlanLimitError`** — raised instead of `ProxyError` when a proxied call is refused because the
+  plan's allowance is spent (HTTP 429/402). Carries `used`, `limit`, `period`, `plan` and `kind` as
+  fields rather than a stringified dict, so a caller can back off or upgrade rather than retry:
+
+  ```python
+  from ranbval_sdk import PlanLimitError
+
+  try:
+      proxy_request(...)
+  except PlanLimitError as e:
+      log.warning("%d/%d requests used this %s", e.used, e.limit, e.period)
+  ```
+
+  It subclasses `RanbvalError`, so existing `except RanbvalError` blocks keep working.
+
+### Note on enforcement
+
+The SDK reports limits; it does not apply them. It runs on the customer's machine, so any check it
+performed locally could simply be removed — every limit is enforced server-side, on the call itself.
+`plan_status()` exists for visibility (usage in your own tooling, a warning before a batch job), not
+as a pre-flight permission check: there is nothing to gain by calling it first, and nothing lost by
+skipping it.
+
+---
+
 ## [3.5.4] - 2026-07-18
 
 ### Added

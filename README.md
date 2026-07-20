@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v3.5.4`
+# Ranbval SDK `v3.6.0`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
@@ -162,6 +162,53 @@ push_env("PUBLIC_FEATURE_FLAG", "on", api_key="ranbval-dev-…")  # shows as "ad
 ```
 
 `SECRET_`/`PROXY_` keys stay owner-only (created encrypted in the dashboard).
+
+---
+
+## Plan & usage
+
+`plan_status()` reports what plan the project is on, what it allows, and how much is used this
+month — using the credentials the SDK already has:
+
+```python
+from ranbval_sdk import plan_status
+
+s = plan_status(project_secret="ranbval-proj-…")   # or api_key="ranbval-dev-…"
+
+s["plan"]                        # "free"
+s["plan_name"]                   # "Free"
+s["limits"]                      # {"projects": 1, "secrets": 5, "requests_month": 1000}
+s["usage"]["requests_month"]     # 412
+s["usage"]["requests_remaining"] # 588
+s["usage"]["period"]             # "2026-07"
+s["enforced"]                    # False while billing is switched off
+```
+
+A `null`/`None` limit means **unlimited** on that plan.
+
+With a **developer token**, `usage["projects"]` and `usage["secrets"]` come back as `None` — those
+counts span the owner's other projects, which a scoped token has no business seeing. The request
+meter is still reported, because that is what decides whether your own proxy calls go through.
+
+When a proxied call is refused because the allowance is spent, `proxy_request()` raises
+`PlanLimitError` rather than a generic `ProxyError`, with the numbers as fields:
+
+```python
+from ranbval_sdk import PlanLimitError, proxy_request
+
+try:
+    proxy_request("PROXY_OPENAI", "https://api.openai.com/v1/chat/completions", body=payload)
+except PlanLimitError as e:
+    log.warning("%s: %d/%d requests used this %s", e.plan, e.used, e.limit, e.period)
+    # back off, queue for next month, or prompt an upgrade — but don't retry into the wall
+```
+
+`PlanLimitError` subclasses `RanbvalError`, so existing `except RanbvalError` handlers keep working.
+
+**This reports; it does not enforce.** The SDK runs on your machine, so any limit it checked here
+you could simply delete — every limit is applied server-side, on the call itself. `plan_status()` is
+for visibility: showing usage in your own tooling, or warning before a long batch job. There is
+nothing to gain by calling it as a pre-flight check, and nothing lost by skipping it.
 
 ---
 
@@ -620,6 +667,7 @@ Every error derives from `RanbvalError`; each also subclasses the built-in it re
 | `RepoNotAllowedError` | `PermissionError` | git remote not in the project allowlist |
 | `RepoPolicyError` | `PermissionError` | repo policy couldn't be loaded/verified |
 | `ProxyError` | `RuntimeError` | the secure proxy rejected the request or was unreachable |
+| `PlanLimitError` | `RuntimeError` | the plan's allowance is spent (HTTP 429/402) — carries `used`, `limit`, `period`, `plan`, `kind` |
 
 The `SecretProvider` protocol types anything that can `reveal(name) -> str` (e.g. `Vault`).
 

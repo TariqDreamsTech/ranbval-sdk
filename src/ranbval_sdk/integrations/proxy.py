@@ -42,7 +42,7 @@ from typing import Any
 from ranbval_sdk._internal import transport
 from ranbval_sdk._internal.defaults import DEFAULT_RANBVAL_HOST
 from ranbval_sdk.crypto.cipher import _find_project_secret_for
-from ranbval_sdk.exceptions import ProxyError
+from ranbval_sdk.exceptions import PlanLimitError, ProxyError
 from ranbval_sdk.serializers.proxy import build_proxy_payload
 
 __all__ = ["proxy_request", "aproxy_request", "ProxyError"]
@@ -188,6 +188,21 @@ def proxy_request(
             detail = json.loads(body_text).get("detail", body_text)
         except Exception:
             detail = body_text
+
+        # 429/402 mean the plan's allowance is spent — a different situation from a broken proxy,
+        # and one a caller may want to handle (back off, upgrade, switch key) rather than retry.
+        # The server sends a structured detail; surface it as fields instead of a stringified dict.
+        if e.code in (402, 429) and isinstance(detail, dict):
+            raise PlanLimitError(
+                str(detail.get("message") or detail.get("error") or "Plan limit reached."),
+                used=detail.get("used"),
+                limit=detail.get("limit"),
+                period=detail.get("period"),
+                plan=detail.get("plan"),
+                kind="requests" if e.code == 429 else "quota",
+                code=str(detail.get("error") or "plan_limit_reached"),
+            ) from e
+
         raise ProxyError(f"Ranbval proxy returned HTTP {e.code}: {detail}") from e
     except urllib.error.URLError as e:
         raise ProxyError(f"Could not reach Ranbval proxy at {host!r}: {e}") from e

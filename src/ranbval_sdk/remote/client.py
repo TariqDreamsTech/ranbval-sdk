@@ -118,3 +118,29 @@ def push_env(
     if env:
         payload["environment"] = env
     return _post(f"{_host(host)}/api/envs/add", payload, timeout)
+
+
+def plan_status(
+    *,
+    project_secret: str | None = None,
+    api_key: str | None = None,
+    host: str | None = None,
+    timeout: float = 10.0,
+) -> dict:
+    """What plan this project is on, what it allows, and how much is used this month.
+
+    ::
+
+        {"plan": "free", "plan_name": "Free", "has_active_subscription": False,
+         "limits": {"projects": 1, "secrets": 5, "requests_month": 1000},
+         "usage":  {"projects": 1, "secrets": 3, "requests_month": 412,
+                    "requests_remaining": 588, "period": "2026-07"}}
+
+    ``None`` for a limit means unlimited on this plan.
+
+    This is for visibility — showing usage in your own tooling, or warning before a job runs into a
+    cap. It is not a permission check: every limit is enforced by the server on the call itself, so
+    there is nothing to be gained by consulting this first, and nothing lost by skipping it.
+    """
+    payload = _credential(project_secret, api_key)
+    return _post(f"{_host(host)}/api/envs/plan-status", payload, timeout)
