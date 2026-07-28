@@ -237,6 +237,8 @@ def test_decrypt_key_after_load_ranbval(tmp_path, monkeypatch):
     (tmp_path / ".ranbval").write_text(
         f"RANBVAL_PROJECT_SECRET={secret}\nSECRET_OPENAI_API_KEY={token}\n", encoding="utf-8"
     )
+    # 0600, as `ranbval init` creates it — otherwise the file-mode guard warns about a fixture.
+    (tmp_path / ".ranbval").chmod(0o600)
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SECRET_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("RANBVAL_PROJECT_SECRET", raising=False)

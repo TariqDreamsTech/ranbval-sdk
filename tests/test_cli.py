@@ -7,6 +7,17 @@ import sys
 from ranbval_sdk.cli import main
 
 
+def _write_private(path, text):
+    """Write a fixture file the way `ranbval init` does — 0600, owner only.
+
+    Without this every fixture holding a project secret trips the file-mode guard and buries the
+    real signal under warnings unrelated to what the test is checking.
+    """
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o600)
+
+
+
 def test_init_creates_files(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     assert main(["init"]) == 0
@@ -25,9 +36,9 @@ def test_init_refuses_overwrite_without_force(tmp_path, monkeypatch):
 
 def test_check_passes_on_clean_file(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
-    (tmp_path / ".ranbval").write_text(
+    _write_private(
+        tmp_path / ".ranbval",
         "RANBVAL_PROJECT_SECRET=proj-x\nPUBLIC_APP=demo\nSECRET_KEY=ranbval.aa.bb.ahsan\n",
-        encoding="utf-8",
     )
     assert main(["check"]) == 0
     out = capsys.readouterr().out

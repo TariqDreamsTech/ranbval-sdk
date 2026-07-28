@@ -21,7 +21,10 @@ from ranbval_sdk.crypto.enforcement import (
     set_enforcement,
     set_strict_encode,
 )
-from ranbval_sdk.crypto.output_guards import install_output_guards
+from ranbval_sdk.crypto.output_guards import (
+    install_output_guards,
+    uninstall_output_guards,
+)
 from ranbval_sdk.crypto.secret_string import SecretString
 
 __all__ = [
@@ -30,6 +33,7 @@ __all__ = [
     "derive_key",
     "SecretString",
     "install_output_guards",
+    "uninstall_output_guards",
     "set_enforcement",
     "is_enforced",
     "enforcement_scope",

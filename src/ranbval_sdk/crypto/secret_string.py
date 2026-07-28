@@ -53,6 +53,18 @@ import os
 
 from ranbval_sdk.crypto import enforcement, memory
 
+# Set by :mod:`ranbval_sdk.crypto.output_guards` when the opt-in stdout guard is installed. It is
+# called with each plaintext a ``.use()`` reveals, so the guard can recognise that value later in
+# an ordinary ``str`` — the form an f-string or concatenation produces, which carries no type we
+# could test. ``None`` (the default) means nothing is retained.
+_reveal_sink: object = None
+
+
+def set_reveal_sink(fn: object) -> None:
+    """Register (or clear with ``None``) the revealed-plaintext sink used by the output guard."""
+    global _reveal_sink
+    _reveal_sink = fn
+
 
 class _ProtectedStr(str):
     """
@@ -73,6 +85,12 @@ class _ProtectedStr(str):
     __slots__ = ()
 
     def __new__(cls, value: str) -> _ProtectedStr:
+        # Tell the output guard what plaintext now exists, so it can catch the value once it has
+        # been formatted into an ordinary str (f-string, concatenation) and lost every marker we
+        # could otherwise test for. The sink is None unless the guard is installed, so this costs
+        # one attribute check and retains nothing by default.
+        if _reveal_sink is not None:
+            _reveal_sink(value)
         return str.__new__(cls, value)
 
     def __str__(self) -> str:

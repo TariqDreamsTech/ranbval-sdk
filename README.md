@@ -2,13 +2,15 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v3.6.0`
+# Ranbval SDK `v3.8.0`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
 runtime — AES-256-GCM with PBKDF2 key derivation, no plaintext ever touches source control.
-Unlike a plain `.env`, a stolen config is useless off your allowlisted repos, and every use is
-attributable in the Live Monitor.
+Unlike a plain `.env`, `.ranbval` is safe to commit, every use is attributable in the Live
+Monitor, and — **once you enable the repo allowlist** — a stolen config is useless off your own
+repos. See [What Ranbval protects, and what it does not](#what-ranbval-protects-and-what-it-does-not)
+for exactly where the line falls.
 
 ```bash
 pip install ranbval-sdk
@@ -46,14 +48,17 @@ Be clear-eyed about the threat model — it's what makes the guarantees trustwor
 | Real-world leak | `.env` | Ranbval |
 |---|---|---|
 | Key committed to Git | 🔴 plaintext, public instantly | 🟢 encrypted token — a commit leaks nothing usable |
-| Config file copied / shared | 🔴 works anywhere, forever | 🟢 **useless without the project secret *and* an allowlisted repo** |
+| Config file copied / shared | 🔴 works anywhere, forever | 🟢 useless without the project secret — and, **once you enable the allowlist**, useless off your repos too |
 | Key printed to logs / captured by Sentry | 🔴 sits in log storage for years | 🟢 `SecretString` masks every display path; can't be pickled into a cache/report |
 | A key leaks — who? which repo? | 🔴 zero visibility | 🟢 **Live Monitor** flags the same credential on a new device/IP → rotate with proof |
 | A thief probes a stolen config | 🔴 no way to know | 🟢 a [**canary key**](#canary-keys--a-decoy-that-only-a-thief-would-ever-touch) is a decoy — the moment they decrypt it, you get the alert |
 
-The crown jewel is the **repo allowlist**: even if someone steals your entire `.ranbval` file
-*and* your project secret, they still can't decrypt it from a repo that isn't on your
-control-plane allowlist. A stolen config is a dead config.
+The strongest control here is the **repo allowlist** — and it is **off until you enable it** for
+a project. With it on, someone who steals your entire `.ranbval` *and* your project secret still
+cannot decrypt from a repo that isn't on your control-plane allowlist: a stolen config is a dead
+config. With it off, those two files are enough. It is the single highest-value switch in the
+product, so turn it on; see
+[What Ranbval protects, and what it does not](#what-ranbval-protects-and-what-it-does-not).
 
 ### An analogy
 
@@ -62,7 +67,8 @@ key opens the lock, whoever holds it gets in. That's physics, not a flaw. Real s
 from three other things, and Ranbval gives you all three:
 
 1. **The key isn't lying in the street** → plaintext never touches Git (encrypted tokens).
-2. **The key only works at your house** → the repo allowlist makes a stolen file worthless elsewhere.
+2. **The key only works at your house** → the repo allowlist makes a stolen file worthless
+   elsewhere, once you switch it on.
 3. **An alarm rings if a stranger walks in** → leak detection alerts on a new device/IP, and a
    [canary key](#canary-keys--a-decoy-that-only-a-thief-would-ever-touch) is a decoy that turns
    *any* use into a confirmed-theft alert.
@@ -1006,6 +1012,49 @@ difference between two unguarded lines and an unguarded program.
 > process-wide for its duration too — it is not thread-local isolation. Keep the block to the
 > handoff itself, and use a `PROXY_` secret when the value must never exist in the process at all.
 
+### Output guard — catch a secret on its way to stdout, however it was formatted
+
+The guards above act on the **value**, so they only see a secret that is still a secret. Format it
+and the marker is gone:
+
+```python
+print(key.use())          # ❌ blocked — still a _ProtectedStr
+print(f"{key.use()}")     # ⚠️ an ordinary str carrying the plaintext
+print("Bearer " + key.use())
+```
+
+That gap cannot be closed at the source. `__format__` has to return the real value or no client
+library can build `Authorization: Bearer <key>`, and `str` is immutable, so `str.__add__` cannot be
+intercepted at all. The type test catches exactly one of those three lines.
+
+The output guard checks the **destination** instead. Every value a `.use()` reveals is registered,
+and anything heading for stdout is checked against them:
+
+```python
+load_ranbval(guard_stdout=True)      # or: install_output_guards()
+
+print(f"{key.use()}")                # PermissionError
+print("Bearer " + key.use())         # PermissionError
+print("%s" % key.use())              # PermissionError
+print({"api_key": f"{key.use()}"})   # PermissionError — nested, still caught
+print("ordinary output")             # fine
+```
+
+**Off by default**, for two reasons worth knowing before you turn it on:
+
+- Patching `builtins.print` / `sys.stdout.write` is invasive — it can surprise other libraries,
+  test capture, and REPLs.
+- While it is on, the registry holds each revealed plaintext for the life of the process. `str`
+  subclasses cannot be weak-referenced, so a value cannot be tracked without being kept. That is a
+  fair trade once you have chosen to leak-proof stdout, and a bad one to impose on everyone.
+
+`uninstall_output_guards()` restores the originals and drops every retained value.
+
+**Honest limits:** stdout only — not stderr, not a file your app writes, not an outbound request.
+It is a guard against the accident (a debug `print` left in, a secret inside a logged dict), not
+against code that is deliberately exfiltrating. Values shorter than 8 characters are not tracked,
+because below that a "secret" collides with ordinary output more often than it matches one.
+
 ### Access monitor — detect suspicious access / exfiltration
 
 With enforcement **off**, the same vectors are *detected and reported* instead of blocked (and
@@ -1226,14 +1275,67 @@ Your Code
 ```
 
 AES-256-GCM encryption with PBKDF2 key derivation (100,000 iterations). The project secret
-never leaves your environment — the decryption itself happens on your machine. The repo
-allowlist check is always on and governed by the Ranbval control plane (no client-side bypass).
-Usage reporting is always on (it is the leak-detection control plane; there is no client-side off switch).
+never leaves your environment — the decryption itself happens on your machine. The repo policy is
+fetched on every decrypt and cannot be bypassed from the client, but it only **blocks** a decrypt
+when you have turned the allowlist on for that project; with `enforce_allowlist` off (the default)
+the policy is fetched and permits everything. Usage reporting is always on (it is the
+leak-detection control plane; there is no client-side off switch).
 
 **Network requirement:** because the allowlist is verified server-side on every decrypt,
 resolving a vault token requires connectivity to the Ranbval control plane — the same as any
 cloud secret manager (HashiCorp Vault, Doppler, AWS/GCP Secrets Manager). Plain (non-`ranbval.*`)
 values in your `.ranbval` files resolve fully offline.
+
+---
+
+## What Ranbval protects, and what it does not
+
+A secret manager that oversells itself is worse than none, because you stop applying the controls
+that actually matter. So, plainly:
+
+### The project secret is plaintext, and that cannot be fixed
+
+`.ranbval.local` holds `RANBVAL_PROJECT_SECRET` in the clear. Encrypting it would need a second
+key, which would need to be stored, which would need a third — the regress never terminates. Every
+system has this floor: Vault's unseal keys, an AWS instance's IAM credentials, the private key
+behind `age`/`sops`, your GPG key. Something is ultimately unencrypted.
+
+**What Ranbval actually changes is the blast radius.** Your secrets stop living in twenty places
+that leak — git history, CI logs, Docker layers, a `.env` pasted into Slack — and start living in
+one gitignored file on one machine. That is a large, real reduction. It is not "encrypted at rest
+with no key anywhere," and nothing can be.
+
+### The three controls that decide how much that floor matters
+
+| control | default | what it buys |
+|---|---|---|
+| **Repo allowlist** | **off** | The stolen file stops being enough — a thief also needs to be inside a clone of an allowlisted repo. **Turn this on.** |
+| **File mode** | `0600` via `ranbval init` | Other accounts on the machine cannot read the root key. The SDK warns if it is group/world-readable. |
+| **`PROXY_` secrets** | opt-in per key | The plaintext never reaches your machine at all, so the project secret being stolen does not expose it. |
+
+Without the allowlist, the project secret **is** the whole vault: copy `.ranbval` and
+`.ranbval.local` to any machine and every token opens. With it on, those two files alone are inert.
+If you take one action after reading this page, make it enabling the allowlist for your project.
+
+### The in-process guards are tripwires, not walls
+
+`SecretString` blocks the accidental paths — `print`, logging, `repr`, pickling, and the naive
+extraction spellings. Against someone deliberately reading the plaintext inside your own process,
+it is bar-raising only: `f"{val}"` returns the real value (a client library must be able to build a
+header), and `str.__str__(val)` / `object.__getattribute__` reach it too. Anything your SDK can
+read to sign a request, determined code in the same process can read as well.
+
+Likewise, `mlock` and buffer zeroing are best-effort. CPython makes immutable `str`/`bytes` copies
+this library cannot pin or wipe, and anyone who can read your process memory has already won.
+
+**`PROXY_` is the only mechanism here with a guarantee rather than a deterrent**, because the value
+is never in your process to begin with.
+
+### Out of scope
+
+A compromised machine, a malicious dependency in your own environment, and a user who deliberately
+exfiltrates a secret they are authorised to use. No client-side library can address these; rotation,
+least-privilege credentials, and the Live Monitor's access record are the answers to them.
 
 ---
 
