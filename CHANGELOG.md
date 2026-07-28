@@ -4,7 +4,25 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
-## [3.8.0] - 2026-07-28
+## [4.0.0] - 2026-07-28
+
+### Breaking
+
+- **The stdout guard is now on by default.** `load_ranbval()` installs it during load. Code that
+  printed a formatted secret — `print(f"{key.use()}")`, `print("Bearer " + key.use())` — used to
+  emit the plaintext and now raises `PermissionError`. That is the point: it was a live credential
+  going to a terminal, a CI log, or a container's stdout.
+
+  Opt out with `load_ranbval(guard_stdout=False)`, or `uninstall_output_guards()` at runtime, if
+  patching `builtins.print` is unacceptable in your process or you cannot accept that the guard
+  retains each revealed plaintext for the life of the process. The opt-out is deliberately **not**
+  an environment variable — an attacker able to set the environment should not be able to switch a
+  security control off for free.
+
+  Installed at load time rather than left to the caller because only that ordering is guaranteed to
+  precede the first decrypt. A guard installed after a reveal cannot recognise that value once it
+  has been formatted into an ordinary string, giving partial coverage that reads as full coverage;
+  `install_output_guards()` now warns when it is called late, naming how many reveals it missed.
 
 ### Added
 

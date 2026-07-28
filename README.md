@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v3.8.0`
+# Ranbval SDK `v4.0.0`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
@@ -1031,7 +1031,7 @@ The output guard checks the **destination** instead. Every value a `.use()` reve
 and anything heading for stdout is checked against them:
 
 ```python
-load_ranbval(guard_stdout=True)      # or: install_output_guards()
+load_ranbval()                       # the guard is installed here, by default
 
 print(f"{key.use()}")                # PermissionError
 print("Bearer " + key.use())         # PermissionError
@@ -1040,15 +1040,22 @@ print({"api_key": f"{key.use()}"})   # PermissionError — nested, still caught
 print("ordinary output")             # fine
 ```
 
-**Off by default**, for two reasons worth knowing before you turn it on:
+**On by default since 4.0.0.** `load_ranbval()` installs it during load — the only point
+guaranteed to precede your first decrypt, since a guard installed after a reveal cannot recognise
+that value in formatted output (it warns if you install it late).
+
+Two costs come with that, neither hidden:
 
 - Patching `builtins.print` / `sys.stdout.write` is invasive — it can surprise other libraries,
-  test capture, and REPLs.
-- While it is on, the registry holds each revealed plaintext for the life of the process. `str`
-  subclasses cannot be weak-referenced, so a value cannot be tracked without being kept. That is a
-  fair trade once you have chosen to leak-proof stdout, and a bad one to impose on everyone.
+  test capture, and REPLs. The patch records which `sys.stdout` object it mutated and refuses to
+  restore onto a different one, so a framework that swaps stdout is left intact.
+- While installed, the registry holds each revealed plaintext for the life of the process. `str`
+  subclasses cannot be weak-referenced, so a value cannot be tracked without being kept. Nothing
+  is retained while the guard is off.
 
-`uninstall_output_guards()` restores the originals and drops every retained value.
+Opt out with `load_ranbval(guard_stdout=False)`, or `uninstall_output_guards()` at runtime. The
+opt-out is deliberately **not** an environment variable — an attacker able to set the environment
+should not be able to switch a security control off for free.
 
 **Honest limits:** stdout only — not stderr, not a file your app writes, not an outbound request.
 It is a guard against the accident (a debug `print` left in, a secret inside a logged dict), not

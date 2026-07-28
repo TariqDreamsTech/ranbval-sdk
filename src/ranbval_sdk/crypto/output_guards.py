@@ -1,4 +1,4 @@
-"""Opt-in global output guards: stop a secret from reaching stdout, however it got there.
+"""Global output guards: stop a secret from reaching stdout, however it got there.
 
 ``SecretString``/``_ProtectedStr`` block the *typed* paths — ``print(key.use())`` raises, ``repr``
 is masked. But the moment a secret is formatted, the result is an ordinary ``str`` that carries no
@@ -16,15 +16,22 @@ This module guards the **destination** instead. Every value a ``.use()`` reveals
 anything written to stdout is checked for those values — so all three lines above raise, along with
 ``"%s" % key``, a f-string inside an f-string, and a dict printed with the secret nested in it.
 
-Off by default, and deliberately so:
+**On by default** — ``load_ranbval()`` installs it during load, which is also the only point at
+which it is guaranteed to be in place before the first decrypt. A stray ``print(f"{key}")`` leaking
+a live credential is a routine accident, and nothing in the value itself can stop it.
+
+Two costs come with that, and neither is hidden:
 
 - Patching ``builtins.print`` / ``sys.stdout.write`` is invasive — it can surprise other libraries,
-  test capture, and REPLs.
-- The registry holds the revealed plaintext for the life of the process. ``str`` subclasses cannot
-  be weak-referenced, so there is no way to track a value without keeping it. That is an acceptable
-  trade when you have opted into leak-proofing stdout, and a bad one to impose by default.
+  test capture, and REPLs. The patch records which ``sys.stdout`` object it mutated and refuses to
+  restore onto a different one, so a framework that swaps stdout is left intact.
+- While installed, the registry holds each revealed plaintext for the life of the process. ``str``
+  subclasses cannot be weak-referenced, so a value cannot be tracked without being kept. Nothing is
+  retained while the guard is off.
 
-Enable with ``load_ranbval(guard_stdout=True)`` or :func:`install_output_guards`.
+Opt out with ``load_ranbval(guard_stdout=False)``, or :func:`uninstall_output_guards` at runtime.
+The opt-out is deliberately not an environment variable: an attacker able to set the environment
+should not be able to switch a security control off for free.
 
 Honest limits: this covers stdout, not stderr, not a file the app writes itself, not a network
 call. It is a guard against the accident — a debug ``print`` left in, a secret in a logged dict —
@@ -36,12 +43,14 @@ from __future__ import annotations
 
 import builtins
 import sys
+import warnings
 
 from ranbval_sdk.crypto.secret_string import _ProtectedStr, set_reveal_sink
 
 _GUARD_INSTALLED = False
 _orig_print = builtins.print
 _orig_stdout_write: object = None
+_patched_stdout: object = None
 
 #: Plaintext values revealed by ``.use()`` while the guard is installed. Populated only then —
 #: with the guard off, nothing is retained and this module costs nothing.
@@ -59,7 +68,7 @@ _LEAK_ERR = (
     "Ranbval: this output contains a decrypted secret. It reached stdout as an ordinary string "
     "(an f-string, concatenation, or '%s'), which the value itself cannot block — a client "
     "library has to be able to build a header out of it. Remove the print, or log a masked "
-    "value. To turn this guard off, don't pass guard_stdout=True."
+    "value, or pass load_ranbval(guard_stdout=False) if this guard is not for you."
 )
 
 
@@ -101,12 +110,37 @@ def install_output_guards() -> None:
     """Patch ``builtins.print`` / ``sys.stdout.write`` so a secret cannot reach stdout.
 
     Raises ``PermissionError`` both for a revealed secret passed directly and for an ordinary
-    string that contains one. Opt-in; safe to call twice.
+    string that contains one. Safe to call twice. ``load_ranbval()`` calls this for you unless you
+    pass ``guard_stdout=False``.
+
+    **Install this before your first ``.use()``.** Only values revealed while the guard is on are
+    registered, so a secret decrypted earlier is invisible to the content check — its formatted
+    form is an ordinary string this module has never seen. Installing late therefore gives partial
+    coverage that looks like full coverage, which is worse than none; a warning is emitted if any
+    reveal already happened. ``RANBVAL_GUARD_STDOUT=1`` or ``load_ranbval(guard_stdout=True)``
+    installs it at load time, ahead of every decrypt.
     """
     global _GUARD_INSTALLED, _orig_stdout_write
     if _GUARD_INSTALLED:
         return
+
+    # Values revealed before this point can never be recognised — say so rather than let the
+    # caller believe stdout is covered when it is only partly covered.
+    from ranbval_sdk.crypto.audit import get_audit_log
+
+    already = len(get_audit_log())
+    if already:
+        warnings.warn(
+            f"Ranbval: the output guard was installed after {already} secret(s) had already been "
+            "revealed. Those values cannot be recognised in formatted output — only reveals from "
+            "now on are covered. Install the guard before your first .use(), or set "
+            "RANBVAL_GUARD_STDOUT=1 so it is in place at load time.",
+            stacklevel=2,
+        )
+
+    global _patched_stdout
     builtins.print = _guarded_print
+    _patched_stdout = sys.stdout
     _orig_stdout_write = sys.stdout.write
     sys.stdout.write = _make_guarded_write(sys.stdout.write)
     _GUARD_INSTALLED = True
@@ -119,10 +153,14 @@ def uninstall_output_guards() -> None:
     global _GUARD_INSTALLED, _orig_stdout_write
     if not _GUARD_INSTALLED:
         return
+    global _patched_stdout
     builtins.print = _orig_print
-    if _orig_stdout_write is not None:
+    # Only un-patch the object we actually patched. If sys.stdout has since been replaced, our
+    # write is already gone with the old object, and assigning onto the new one would break it.
+    if _orig_stdout_write is not None and sys.stdout is _patched_stdout:
         sys.stdout.write = _orig_stdout_write  # type: ignore[method-assign]
-        _orig_stdout_write = None
+    _orig_stdout_write = None
+    _patched_stdout = None
     set_reveal_sink(None)
     _revealed.clear()
     _GUARD_INSTALLED = False

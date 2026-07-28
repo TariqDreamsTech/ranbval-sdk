@@ -248,9 +248,11 @@ def test_decrypt_key_after_load_ranbval(tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# stdout guards are opt-in
+# stdout guard is on by default, and opt-out-able
 # --------------------------------------------------------------------------- #
-def test_load_ranbval_does_not_patch_print_by_default(tmp_path, monkeypatch):
+def test_load_ranbval_patches_print_by_default(tmp_path, monkeypatch):
+    # Installed during load, which is the only point guaranteed to precede the first decrypt —
+    # a guard installed after a reveal cannot recognise that value in formatted output.
     import builtins
 
     from ranbval_sdk import load_ranbval
@@ -259,4 +261,32 @@ def test_load_ranbval_does_not_patch_print_by_default(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     before = builtins.print
     load_ranbval()
-    assert builtins.print is before  # no global monkeypatch as a side effect
+    assert builtins.print is not before
+
+
+def test_guard_stdout_false_leaves_builtins_alone(tmp_path, monkeypatch):
+    # The opt-out for callers who cannot accept a patched print, or the guard's retention of
+    # each revealed plaintext for the life of the process.
+    import builtins
+
+    from ranbval_sdk import load_ranbval
+
+    (tmp_path / ".ranbval").write_text("PUBLIC_APP_NAME=demo\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    before = builtins.print
+    load_ranbval(guard_stdout=False)
+    assert builtins.print is before
+
+
+def test_the_default_guard_blocks_a_formatted_secret(tmp_path, monkeypatch):
+    # The whole point of the default: the accident this catches is print(f"{key}"), which no
+    # amount of sealing inside the value can prevent.
+    from ranbval_sdk import SecretString, load_ranbval
+
+    (tmp_path / ".ranbval").write_text("PUBLIC_APP_NAME=demo\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    load_ranbval()
+
+    revealed = SecretString("sk-live-a-long-enough-secret", label="T").use()
+    with pytest.raises(PermissionError):
+        print(f"leaked: {revealed}")
