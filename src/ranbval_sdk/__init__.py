@@ -85,7 +85,7 @@ from ranbval_sdk.telemetry import (
     uninstall_access_monitor,
 )
 
-__version__ = "4.0.0"
+__version__ = "4.0.1"
 
 __all__ = [
     # Config

@@ -4,6 +4,44 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [4.0.1] - 2026-07-28
+
+### Fixed
+
+Three paths could still put a live credential on a terminal or in a log after 4.0.0. Found by
+measuring against the guard rather than assuming it was complete:
+
+```
+print(f"{v:.8}")           leaked a prefix
+sys.stderr.write(f"{v}")   leaked in full
+logging.info(f"{v}")       leaked in full
+```
+
+- **stderr is now guarded alongside stdout.** That is where `logging`'s default handler writes,
+  and a credential in a log line outlives the terminal it was printed to. `logging` swallows
+  handler exceptions, so such a call prints `--- Logging error ---` rather than propagating a
+  failure — but the credential does not reach the stream, which is the point.
+
+- **A truncating format spec now raises.** `f"{key:.8}"` yields a *prefix*, and a prefix is not
+  the value, so no content check at the destination can recognise it — it would print straight
+  past the guard. This one has to be caught at the source, and is: a precision spec on a secret
+  raises `RanbvalSecurityError`. Padding is unaffected, including a `.` used as a fill character
+  (`f"{key:.<40}"`), which truncates nothing — the spec is parsed for a real precision rather
+  than searched for a dot.
+
+Passing a secret to a client library is untouched: `f"Bearer {key}"` and
+`OpenAI(api_key=use.OPENAI_KEY)` still work. The line is between handing a value to a library and
+writing it where a human or a log aggregator reads it.
+
+### Documented
+
+- **The guard covers the streams as they were at install time.** A stream replaced afterwards —
+  a redirect, a test capture fixture, a handler opened on a new file object — is a different
+  object and is not patched. There is now a test asserting exactly that, so the limit cannot
+  quietly turn into a false promise.
+
+---
+
 ## [4.0.0] - 2026-07-28
 
 ### Breaking
@@ -12,15 +50,6 @@ All notable changes to `ranbval-sdk` are documented here.
   printed a formatted secret — `print(f"{key.use()}")`, `print("Bearer " + key.use())` — used to
   emit the plaintext and now raises `PermissionError`. That is the point: it was a live credential
   going to a terminal, a CI log, or a container's stdout.
-
-  It covers **stdout and stderr**, so a `logging` call that formatted a credential into its
-  message no longer puts it in your logs either (the write raises; `logging` swallows handler
-  exceptions, so you get `--- Logging error ---` and the credential does not reach the stream).
-
-  **Truncating format specs now raise.** `f"{key:.8}"` produces a *prefix* — not the value — so no
-  content check can recognise it and it would print straight past the guard. A precision spec on a
-  secret raises `RanbvalSecurityError`; padding still works, including a `.` used as a fill
-  character (`f"{key:.<40}"`), which truncates nothing.
 
   Opt out with `load_ranbval(guard_stdout=False)`, or `uninstall_output_guards()` at runtime, if
   patching `builtins.print` is unacceptable in your process or you cannot accept that the guard
