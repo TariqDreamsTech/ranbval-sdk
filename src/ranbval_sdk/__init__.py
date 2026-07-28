@@ -11,7 +11,8 @@ Public API, grouped by concern (each name re-exported from its home subpackage):
   ``secrets``, ``iter_secrets``, ``public``, ``public_config``, ``is_public``,
   ``is_proxy``, ``proxy_token``, ``Secret``, ``SecretConfig``, ``SecretProvider``.
 - **Crypto** (:mod:`ranbval_sdk.crypto`) — ``safe_decrypt``, ``decrypt_key``,
-  ``SecretString``, ``get_audit_log``, ``clear_audit_log``, ``audit_scope``.
+  ``SecretString``, ``set_enforcement``, ``enforcement_scope``, ``get_audit_log``,
+  ``clear_audit_log``, ``audit_scope``.
 - **Telemetry** (:mod:`ranbval_sdk.telemetry`) — ``emit_telemetry``, ``aemit_telemetry``,
   ``track``, ``tracked``.
 - **Secure proxy** (:mod:`ranbval_sdk.integrations.proxy`) — ``proxy_request``, ``aproxy_request``.
@@ -45,16 +46,20 @@ from ranbval_sdk.config import (
     resolve_ranbval_mode,
     reveal_scope,
     secrets,
+    use,
+    Use,
 )
 from ranbval_sdk.crypto import (
     SecretString,
     audit_scope,
     clear_audit_log,
     decrypt_key,
+    enforcement_scope,
     get_audit_log,
     is_enforced,
     safe_decrypt,
     set_enforcement,
+    set_strict_encode,
 )
 from ranbval_sdk.exceptions import (
     MissingKeyError,
@@ -78,10 +83,12 @@ from ranbval_sdk.telemetry import (
     uninstall_access_monitor,
 )
 
-__version__ = "3.6.0"
+__version__ = "3.7.0"
 
 __all__ = [
     # Config
+    "use",
+    "Use",
     "load_ranbval",
     "get_project_key",
     "find_ranbval_file",
@@ -109,6 +116,8 @@ __all__ = [
     "SecretString",
     "set_enforcement",
     "is_enforced",
+    "enforcement_scope",
+    "set_strict_encode",
     "get_audit_log",
     "clear_audit_log",
     "audit_scope",

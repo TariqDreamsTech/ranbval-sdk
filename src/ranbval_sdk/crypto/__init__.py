@@ -15,7 +15,12 @@ from ranbval_sdk.crypto.audit import (
     record_access,
 )
 from ranbval_sdk.crypto.cipher import decrypt_key, derive_key, safe_decrypt
-from ranbval_sdk.crypto.enforcement import is_enforced, set_enforcement
+from ranbval_sdk.crypto.enforcement import (
+    enforcement_scope,
+    is_enforced,
+    set_enforcement,
+    set_strict_encode,
+)
 from ranbval_sdk.crypto.output_guards import install_output_guards
 from ranbval_sdk.crypto.secret_string import SecretString
 
@@ -27,6 +32,8 @@ __all__ = [
     "install_output_guards",
     "set_enforcement",
     "is_enforced",
+    "enforcement_scope",
+    "set_strict_encode",
     "get_audit_log",
     "clear_audit_log",
     "audit_scope",

@@ -3,6 +3,7 @@
 - :mod:`~ranbval_sdk.config.loader` — parse and merge layered ``.ranbval*`` files into the env.
 - :mod:`~ranbval_sdk.config.access` — imperative access (``Vault``, ``inject``, ``secrets``).
 - :mod:`~ranbval_sdk.config.declarative` — class-based access (``Secret``, ``SecretConfig``).
+- :mod:`~ranbval_sdk.config.quick` — the one-word form (``use.SUPABASE_TOKEN``).
 """
 
 from ranbval_sdk.config.access import (
@@ -19,6 +20,7 @@ from ranbval_sdk.config.access import (
     secrets,
 )
 from ranbval_sdk.config.declarative import Secret, SecretConfig
+from ranbval_sdk.config.quick import Use, use
 from ranbval_sdk.config.loader import (
     find_ranbval_directory,
     find_ranbval_file,
@@ -33,6 +35,8 @@ from ranbval_sdk.config.reveal import (
 )
 
 __all__ = [
+    "use",
+    "Use",
     "load_ranbval",
     "get_project_key",
     "find_ranbval_file",
