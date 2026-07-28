@@ -56,10 +56,12 @@ from ranbval_sdk.crypto import (
     decrypt_key,
     enforcement_scope,
     get_audit_log,
+    install_output_guards,
     is_enforced,
     safe_decrypt,
     set_enforcement,
     set_strict_encode,
+    uninstall_output_guards,
 )
 from ranbval_sdk.exceptions import (
     MissingKeyError,
@@ -83,7 +85,7 @@ from ranbval_sdk.telemetry import (
     uninstall_access_monitor,
 )
 
-__version__ = "3.7.1"
+__version__ = "3.8.0"
 
 __all__ = [
     # Config
@@ -118,6 +120,8 @@ __all__ = [
     "is_enforced",
     "enforcement_scope",
     "set_strict_encode",
+    "install_output_guards",
+    "uninstall_output_guards",
     "get_audit_log",
     "clear_audit_log",
     "audit_scope",

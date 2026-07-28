@@ -4,7 +4,7 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
-## [3.7.1] - 2026-07-28
+## [3.8.0] - 2026-07-28
 
 ### Added
 
@@ -58,6 +58,10 @@ All notable changes to `ranbval-sdk` are documented here.
   guard is off. Added `uninstall_output_guards()` to restore the originals and drop everything
   held. Covers stdout only, and values of 8+ characters.
 
+- **`install_output_guards()` / `uninstall_output_guards()` are exported at the top level.** The
+  README documented `install_output_guards()` by that name, but it was reachable only as
+  `ranbval_sdk.crypto.install_output_guards` — the documented call raised `ImportError`.
+
 - **`ranbval check` reports a loose root-key file as an error** (exit 1), so a CI job or
   pre-commit hook fails on it rather than merely printing a warning nobody reads.
 
@@ -70,8 +74,11 @@ All notable changes to `ranbval-sdk` are documented here.
   client library must be able to build a header from it). `PROXY_` is identified as the only
   mechanism here offering a guarantee rather than a deterrent.
 
-- **Corrected two overstated claims.** The header said a stolen config is "useless off your
-  allowlisted repos", and the architecture section said the allowlist check is "always on". The
+- **Corrected the overstated allowlist claims.** Five places presented the repo allowlist as
+  though it were always active: the header ("a stolen config is useless off your allowlisted
+  repos"), the architecture section ("the allowlist check is always on"), the leak-comparison
+  table, the "crown jewel … a stolen config is a dead config" paragraph, and the house-key
+  analogy. The
   policy is always *fetched* and cannot be bypassed client-side, but it only *blocks* a decrypt
   when `enforce_allowlist` is turned on for the project — and that is **off** by default. With it
   off, `.ranbval` plus `.ranbval.local` copied to any machine opens every token. Both statements

@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v3.7.1`
+# Ranbval SDK `v3.8.0`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
@@ -48,14 +48,17 @@ Be clear-eyed about the threat model — it's what makes the guarantees trustwor
 | Real-world leak | `.env` | Ranbval |
 |---|---|---|
 | Key committed to Git | 🔴 plaintext, public instantly | 🟢 encrypted token — a commit leaks nothing usable |
-| Config file copied / shared | 🔴 works anywhere, forever | 🟢 **useless without the project secret *and* an allowlisted repo** |
+| Config file copied / shared | 🔴 works anywhere, forever | 🟢 useless without the project secret — and, **once you enable the allowlist**, useless off your repos too |
 | Key printed to logs / captured by Sentry | 🔴 sits in log storage for years | 🟢 `SecretString` masks every display path; can't be pickled into a cache/report |
 | A key leaks — who? which repo? | 🔴 zero visibility | 🟢 **Live Monitor** flags the same credential on a new device/IP → rotate with proof |
 | A thief probes a stolen config | 🔴 no way to know | 🟢 a [**canary key**](#canary-keys--a-decoy-that-only-a-thief-would-ever-touch) is a decoy — the moment they decrypt it, you get the alert |
 
-The crown jewel is the **repo allowlist**: even if someone steals your entire `.ranbval` file
-*and* your project secret, they still can't decrypt it from a repo that isn't on your
-control-plane allowlist. A stolen config is a dead config.
+The strongest control here is the **repo allowlist** — and it is **off until you enable it** for
+a project. With it on, someone who steals your entire `.ranbval` *and* your project secret still
+cannot decrypt from a repo that isn't on your control-plane allowlist: a stolen config is a dead
+config. With it off, those two files are enough. It is the single highest-value switch in the
+product, so turn it on; see
+[What Ranbval protects, and what it does not](#what-ranbval-protects-and-what-it-does-not).
 
 ### An analogy
 
@@ -64,7 +67,8 @@ key opens the lock, whoever holds it gets in. That's physics, not a flaw. Real s
 from three other things, and Ranbval gives you all three:
 
 1. **The key isn't lying in the street** → plaintext never touches Git (encrypted tokens).
-2. **The key only works at your house** → the repo allowlist makes a stolen file worthless elsewhere.
+2. **The key only works at your house** → the repo allowlist makes a stolen file worthless
+   elsewhere, once you switch it on.
 3. **An alarm rings if a stranger walks in** → leak detection alerts on a new device/IP, and a
    [canary key](#canary-keys--a-decoy-that-only-a-thief-would-ever-touch) is a decoy that turns
    *any* use into a confirmed-theft alert.
