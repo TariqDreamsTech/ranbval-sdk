@@ -2,13 +2,15 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v3.6.0`
+# Ranbval SDK `v3.7.1`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
 runtime — AES-256-GCM with PBKDF2 key derivation, no plaintext ever touches source control.
-Unlike a plain `.env`, a stolen config is useless off your allowlisted repos, and every use is
-attributable in the Live Monitor.
+Unlike a plain `.env`, `.ranbval` is safe to commit, every use is attributable in the Live
+Monitor, and — **once you enable the repo allowlist** — a stolen config is useless off your own
+repos. See [What Ranbval protects, and what it does not](#what-ranbval-protects-and-what-it-does-not)
+for exactly where the line falls.
 
 ```bash
 pip install ranbval-sdk
@@ -1226,14 +1228,67 @@ Your Code
 ```
 
 AES-256-GCM encryption with PBKDF2 key derivation (100,000 iterations). The project secret
-never leaves your environment — the decryption itself happens on your machine. The repo
-allowlist check is always on and governed by the Ranbval control plane (no client-side bypass).
-Usage reporting is always on (it is the leak-detection control plane; there is no client-side off switch).
+never leaves your environment — the decryption itself happens on your machine. The repo policy is
+fetched on every decrypt and cannot be bypassed from the client, but it only **blocks** a decrypt
+when you have turned the allowlist on for that project; with `enforce_allowlist` off (the default)
+the policy is fetched and permits everything. Usage reporting is always on (it is the
+leak-detection control plane; there is no client-side off switch).
 
 **Network requirement:** because the allowlist is verified server-side on every decrypt,
 resolving a vault token requires connectivity to the Ranbval control plane — the same as any
 cloud secret manager (HashiCorp Vault, Doppler, AWS/GCP Secrets Manager). Plain (non-`ranbval.*`)
 values in your `.ranbval` files resolve fully offline.
+
+---
+
+## What Ranbval protects, and what it does not
+
+A secret manager that oversells itself is worse than none, because you stop applying the controls
+that actually matter. So, plainly:
+
+### The project secret is plaintext, and that cannot be fixed
+
+`.ranbval.local` holds `RANBVAL_PROJECT_SECRET` in the clear. Encrypting it would need a second
+key, which would need to be stored, which would need a third — the regress never terminates. Every
+system has this floor: Vault's unseal keys, an AWS instance's IAM credentials, the private key
+behind `age`/`sops`, your GPG key. Something is ultimately unencrypted.
+
+**What Ranbval actually changes is the blast radius.** Your secrets stop living in twenty places
+that leak — git history, CI logs, Docker layers, a `.env` pasted into Slack — and start living in
+one gitignored file on one machine. That is a large, real reduction. It is not "encrypted at rest
+with no key anywhere," and nothing can be.
+
+### The three controls that decide how much that floor matters
+
+| control | default | what it buys |
+|---|---|---|
+| **Repo allowlist** | **off** | The stolen file stops being enough — a thief also needs to be inside a clone of an allowlisted repo. **Turn this on.** |
+| **File mode** | `0600` via `ranbval init` | Other accounts on the machine cannot read the root key. The SDK warns if it is group/world-readable. |
+| **`PROXY_` secrets** | opt-in per key | The plaintext never reaches your machine at all, so the project secret being stolen does not expose it. |
+
+Without the allowlist, the project secret **is** the whole vault: copy `.ranbval` and
+`.ranbval.local` to any machine and every token opens. With it on, those two files alone are inert.
+If you take one action after reading this page, make it enabling the allowlist for your project.
+
+### The in-process guards are tripwires, not walls
+
+`SecretString` blocks the accidental paths — `print`, logging, `repr`, pickling, and the naive
+extraction spellings. Against someone deliberately reading the plaintext inside your own process,
+it is bar-raising only: `f"{val}"` returns the real value (a client library must be able to build a
+header), and `str.__str__(val)` / `object.__getattribute__` reach it too. Anything your SDK can
+read to sign a request, determined code in the same process can read as well.
+
+Likewise, `mlock` and buffer zeroing are best-effort. CPython makes immutable `str`/`bytes` copies
+this library cannot pin or wipe, and anyone who can read your process memory has already won.
+
+**`PROXY_` is the only mechanism here with a guarantee rather than a deterrent**, because the value
+is never in your process to begin with.
+
+### Out of scope
+
+A compromised machine, a malicious dependency in your own environment, and a user who deliberately
+exfiltrates a secret they are authorised to use. No client-side library can address these; rotation,
+least-privilege credentials, and the Live Monitor's access record are the answers to them.
 
 ---
 

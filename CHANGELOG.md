@@ -4,6 +4,56 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.7.1] - 2026-07-28
+
+### Added
+
+- **File-mode guard on the root-key file.** The project secret is the one value that cannot be
+  encrypted, so the only thing between another account on the machine and the whole vault is the
+  file mode — and a default umask of 022 creates `.ranbval.local` as `0644`, readable by every
+  user on the box. `ssh` refuses a private key in that state; Ranbval was silent about it.
+
+  `load_ranbval()` now warns when a file holding a `*_PROJECT_SECRET` is group/other-readable,
+  naming the exact fix:
+
+  ```
+  Ranbval: .ranbval.local is 0644 — your project secret is readable by other users on this
+  machine, and that key unseals every token in .ranbval. Fix it with:
+      chmod 600 .ranbval.local
+  ```
+
+  It warns rather than raises, because `0644` is what the OS default produces rather than
+  something you did wrong, and failing on upgrade would break working installs over a
+  pre-existing condition. Set `RANBVAL_STRICT_FILE_MODE=1` to make it an error — worth doing in
+  CI and production images. POSIX only; Windows does not express access this way.
+
+- **`ranbval init` now creates `.ranbval.local` at `0600`.** Previously it created only
+  `.ranbval` and left users to write the root-key file by hand, under whatever umask was in
+  effect. The file is opened with mode `0600` directly rather than created and then `chmod`ed, so
+  it is never briefly world-readable while already holding the secret. An existing file is left
+  untouched.
+
+- **`ranbval check` reports a loose root-key file as an error** (exit 1), so a CI job or
+  pre-commit hook fails on it rather than merely printing a warning nobody reads.
+
+### Changed
+
+- **Documented the threat model honestly.** A new README section, *What Ranbval protects, and what
+  it does not*, states plainly that the project secret is plaintext and cannot be otherwise; that
+  what Ranbval changes is the blast radius, not the existence of a root key; and that the
+  in-process guards are tripwires rather than walls (`f"{val}"` returns the plaintext, because a
+  client library must be able to build a header from it). `PROXY_` is identified as the only
+  mechanism here offering a guarantee rather than a deterrent.
+
+- **Corrected two overstated claims.** The header said a stolen config is "useless off your
+  allowlisted repos", and the architecture section said the allowlist check is "always on". The
+  policy is always *fetched* and cannot be bypassed client-side, but it only *blocks* a decrypt
+  when `enforce_allowlist` is turned on for the project — and that is **off** by default. With it
+  off, `.ranbval` plus `.ranbval.local` copied to any machine opens every token. Both statements
+  now say so, and the README points at enabling the allowlist as the single highest-value action.
+
+---
+
 ## [3.7.0] - 2026-07-28
 
 The theme of this release is that **security you have to switch off isn't security**. Three of the
