@@ -345,7 +345,7 @@ def load_ranbval(
     override: bool = False,
     project_secret: str | None = None,
     project_name: str | None = None,
-    guard_stdout: bool = False,
+    guard_stdout: bool = True,
     sole_loader: bool = True,
     remote: bool = False,
     api_key: str | None = None,
@@ -387,13 +387,21 @@ def load_ranbval(
       If a token's env-var prefix does not match the loaded project name, ``get_project_key``
       will raise ``ValueError`` so cross-project key mix-ups are caught at load time.
 
-    **Hardening** (optional):
+    **Hardening**:
 
-    - ``guard_stdout=False`` (default): no global patching. Secrets still mask themselves
-      via ``SecretString.__str__``/``__repr__``.
-    - ``guard_stdout=True``: patch ``builtins.print`` / ``sys.stdout.write`` so passing a
-      revealed secret straight to them raises ``PermissionError``. Opt-in because it mutates
-      global builtins and can surprise other libraries / test capture.
+    - ``guard_stdout=True`` (**default**): patch ``builtins.print`` / ``sys.stdout.write`` so a
+      secret cannot reach stdout — whether passed directly or already formatted into an ordinary
+      string by an f-string, concatenation or ``%s``. Raises ``PermissionError``. Installed here,
+      during load, so it is in place before the first decrypt; installing it later covers only
+      the reveals that follow.
+    - ``guard_stdout=False``: no global patching. Secrets still mask themselves via
+      ``SecretString.__str__``/``__repr__``, but a formatted one reaches stdout unhindered.
+
+      Turn it off when patching global builtins is unacceptable — it can surprise other
+      libraries, test capture and REPLs — or when you cannot accept that the guard retains each
+      revealed plaintext for the life of the process (``str`` subclasses cannot be
+      weak-referenced, so a value cannot be tracked without being kept).
+      ``uninstall_output_guards()`` removes it again at runtime.
 
     **Sole loader** (default on):
 
@@ -502,6 +510,13 @@ def load_ranbval(
     # Optional, opt-in hardening: patch builtins.print / sys.stdout.write to raise if a
     # protected secret is passed directly. Off by default because patching global builtins
     # is invasive; SecretString already masks itself via __str__/__repr__ without it.
+    # On by default: a formatted secret is an ordinary string, so without this a stray
+    # print(f"{key}") leaks the plaintext and nothing in the value can stop it. Installed here
+    # rather than by the caller so it is in place before the first decrypt — a guard installed
+    # after a reveal covers only what follows, which looks like protection and is not.
+    #
+    # The opt-out is the argument, deliberately not an env var: an attacker who can set the
+    # environment would otherwise switch the guard off for free.
     if guard_stdout:
         from ranbval_sdk.crypto.output_guards import install_output_guards
 
