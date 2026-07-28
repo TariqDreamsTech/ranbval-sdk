@@ -33,6 +33,31 @@ All notable changes to `ranbval-sdk` are documented here.
   it is never briefly world-readable while already holding the secret. An existing file is left
   untouched.
 
+- **The stdout guard now catches a secret however it was formatted.** It previously tested the
+  *type* — so `print(key.use())` raised, but `print(f"{key.use()}")` and
+  `print("Bearer " + key.use())` sailed through, because formatting a secret produces an ordinary
+  `str` carrying no marker at all.
+
+  That gap cannot be closed at the source: `__format__` must return the real value or no client
+  library can build `Authorization: Bearer <key>`, and `str` is immutable so `str.__add__` cannot
+  be intercepted. The guard now checks the **destination** — every value a `.use()` reveals is
+  registered, and anything heading for stdout is checked against them:
+
+  ```python
+  load_ranbval(guard_stdout=True)
+
+  print(f"{key.use()}")                # PermissionError
+  print("Bearer " + key.use())         # PermissionError
+  print({"api_key": f"{key.use()}"})   # PermissionError — nested, still caught
+  print("ordinary output")             # fine
+  ```
+
+  Still off by default: patching `print`/`stdout.write` is invasive, and while the guard is on the
+  registry holds each revealed plaintext for the life of the process — `str` subclasses cannot be
+  weak-referenced, so a value cannot be tracked without being kept. Nothing is retained while the
+  guard is off. Added `uninstall_output_guards()` to restore the originals and drop everything
+  held. Covers stdout only, and values of 8+ characters.
+
 - **`ranbval check` reports a loose root-key file as an error** (exit 1), so a CI job or
   pre-commit hook fails on it rather than merely printing a warning nobody reads.
 

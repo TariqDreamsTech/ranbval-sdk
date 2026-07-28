@@ -1008,6 +1008,49 @@ difference between two unguarded lines and an unguarded program.
 > process-wide for its duration too — it is not thread-local isolation. Keep the block to the
 > handoff itself, and use a `PROXY_` secret when the value must never exist in the process at all.
 
+### Output guard — catch a secret on its way to stdout, however it was formatted
+
+The guards above act on the **value**, so they only see a secret that is still a secret. Format it
+and the marker is gone:
+
+```python
+print(key.use())          # ❌ blocked — still a _ProtectedStr
+print(f"{key.use()}")     # ⚠️ an ordinary str carrying the plaintext
+print("Bearer " + key.use())
+```
+
+That gap cannot be closed at the source. `__format__` has to return the real value or no client
+library can build `Authorization: Bearer <key>`, and `str` is immutable, so `str.__add__` cannot be
+intercepted at all. The type test catches exactly one of those three lines.
+
+The output guard checks the **destination** instead. Every value a `.use()` reveals is registered,
+and anything heading for stdout is checked against them:
+
+```python
+load_ranbval(guard_stdout=True)      # or: install_output_guards()
+
+print(f"{key.use()}")                # PermissionError
+print("Bearer " + key.use())         # PermissionError
+print("%s" % key.use())              # PermissionError
+print({"api_key": f"{key.use()}"})   # PermissionError — nested, still caught
+print("ordinary output")             # fine
+```
+
+**Off by default**, for two reasons worth knowing before you turn it on:
+
+- Patching `builtins.print` / `sys.stdout.write` is invasive — it can surprise other libraries,
+  test capture, and REPLs.
+- While it is on, the registry holds each revealed plaintext for the life of the process. `str`
+  subclasses cannot be weak-referenced, so a value cannot be tracked without being kept. That is a
+  fair trade once you have chosen to leak-proof stdout, and a bad one to impose on everyone.
+
+`uninstall_output_guards()` restores the originals and drops every retained value.
+
+**Honest limits:** stdout only — not stderr, not a file your app writes, not an outbound request.
+It is a guard against the accident (a debug `print` left in, a secret inside a logged dict), not
+against code that is deliberately exfiltrating. Values shorter than 8 characters are not tracked,
+because below that a "secret" collides with ordinary output more often than it matches one.
+
 ### Access monitor — detect suspicious access / exfiltration
 
 With enforcement **off**, the same vectors are *detected and reported* instead of blocked (and
