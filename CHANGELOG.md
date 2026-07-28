@@ -13,6 +13,15 @@ All notable changes to `ranbval-sdk` are documented here.
   emit the plaintext and now raises `PermissionError`. That is the point: it was a live credential
   going to a terminal, a CI log, or a container's stdout.
 
+  It covers **stdout and stderr**, so a `logging` call that formatted a credential into its
+  message no longer puts it in your logs either (the write raises; `logging` swallows handler
+  exceptions, so you get `--- Logging error ---` and the credential does not reach the stream).
+
+  **Truncating format specs now raise.** `f"{key:.8}"` produces a *prefix* — not the value — so no
+  content check can recognise it and it would print straight past the guard. A precision spec on a
+  secret raises `RanbvalSecurityError`; padding still works, including a `.` used as a fill
+  character (`f"{key:.<40}"`), which truncates nothing.
+
   Opt out with `load_ranbval(guard_stdout=False)`, or `uninstall_output_guards()` at runtime, if
   patching `builtins.print` is unacceptable in your process or you cannot accept that the guard
   retains each revealed plaintext for the life of the process. The opt-out is deliberately **not**
@@ -62,19 +71,19 @@ All notable changes to `ranbval-sdk` are documented here.
   registered, and anything heading for stdout is checked against them:
 
   ```python
-  load_ranbval(guard_stdout=True)
-
   print(f"{key.use()}")                # PermissionError
   print("Bearer " + key.use())         # PermissionError
   print({"api_key": f"{key.use()}"})   # PermissionError — nested, still caught
   print("ordinary output")             # fine
   ```
 
-  Still off by default: patching `print`/`stdout.write` is invasive, and while the guard is on the
-  registry holds each revealed plaintext for the life of the process — `str` subclasses cannot be
-  weak-referenced, so a value cannot be tracked without being kept. Nothing is retained while the
-  guard is off. Added `uninstall_output_guards()` to restore the originals and drop everything
-  held. Covers stdout only, and values of 8+ characters.
+  While the guard is installed the registry holds each revealed plaintext for the life of the
+  process — `str` subclasses cannot be weak-referenced, so a value cannot be tracked without being
+  kept. Nothing is retained while it is off. Added `uninstall_output_guards()` to restore the
+  originals and drop everything held. Values under 8 characters are not tracked; below that a
+  "secret" collides with ordinary output more often than it matches one.
+
+  See **Breaking** above for the default and for stderr/truncation coverage.
 
 - **`install_output_guards()` / `uninstall_output_guards()` are exported at the top level.** The
   README documented `install_output_guards()` by that name, but it was reachable only as

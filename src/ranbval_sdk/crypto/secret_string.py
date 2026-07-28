@@ -66,6 +66,20 @@ def set_reveal_sink(fn: object) -> None:
     _reveal_sink = fn
 
 
+def _has_precision(spec: str) -> bool:
+    """True when a format spec truncates — ``f"{x:.8}"`` — as opposed to merely padding it.
+
+    The leading ``.`` cannot simply be searched for: a spec may open with ``fill`` + ``align``,
+    and ``.`` is a legal fill character (``f"{x:.<20}"`` pads with dots and truncates nothing).
+    Per the format-spec grammar, fill is only meaningful when followed by an alignment char, so
+    those two positions are skipped before looking for the precision dot.
+    """
+    if not spec:
+        return False
+    rest = spec[2:] if len(spec) >= 2 and spec[1] in "<>^=" else spec
+    return "." in rest
+
+
 class _ProtectedStr(str):
     """
     str subclass returned by SecretString.use().
@@ -112,6 +126,13 @@ class _ProtectedStr(str):
         # break SDK f-string headers. Reconstruct via the *base* str.__getitem__ (NOT self[:],
         # which hits our blocking __getitem__), so f"Bearer {key}" works while external slicing
         # stays blocked. print(x) (which calls __str__ directly) remains masked.
+        #
+        # A precision spec (f"{key:.8}") truncates, and a truncated secret is a *prefix* — it is
+        # not the value, so the output guard cannot recognise it, and it would leak past every
+        # content check. No client library truncates a credential to build a request; the only
+        # reasons to do it are debugging and extraction. Guarded like the other read paths.
+        if _has_precision(spec):
+            enforcement.guard_reveal("truncate")
         return format(str.__getitem__(self, slice(None)), spec)
 
     def __getitem__(self, key):
