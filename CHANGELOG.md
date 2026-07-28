@@ -4,6 +4,44 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [4.0.1] - 2026-07-28
+
+### Fixed
+
+Three paths could still put a live credential on a terminal or in a log after 4.0.0. Found by
+measuring against the guard rather than assuming it was complete:
+
+```
+print(f"{v:.8}")           leaked a prefix
+sys.stderr.write(f"{v}")   leaked in full
+logging.info(f"{v}")       leaked in full
+```
+
+- **stderr is now guarded alongside stdout.** That is where `logging`'s default handler writes,
+  and a credential in a log line outlives the terminal it was printed to. `logging` swallows
+  handler exceptions, so such a call prints `--- Logging error ---` rather than propagating a
+  failure — but the credential does not reach the stream, which is the point.
+
+- **A truncating format spec now raises.** `f"{key:.8}"` yields a *prefix*, and a prefix is not
+  the value, so no content check at the destination can recognise it — it would print straight
+  past the guard. This one has to be caught at the source, and is: a precision spec on a secret
+  raises `RanbvalSecurityError`. Padding is unaffected, including a `.` used as a fill character
+  (`f"{key:.<40}"`), which truncates nothing — the spec is parsed for a real precision rather
+  than searched for a dot.
+
+Passing a secret to a client library is untouched: `f"Bearer {key}"` and
+`OpenAI(api_key=use.OPENAI_KEY)` still work. The line is between handing a value to a library and
+writing it where a human or a log aggregator reads it.
+
+### Documented
+
+- **The guard covers the streams as they were at install time.** A stream replaced afterwards —
+  a redirect, a test capture fixture, a handler opened on a new file object — is a different
+  object and is not patched. There is now a test asserting exactly that, so the limit cannot
+  quietly turn into a false promise.
+
+---
+
 ## [4.0.0] - 2026-07-28
 
 ### Breaking
@@ -62,19 +100,19 @@ All notable changes to `ranbval-sdk` are documented here.
   registered, and anything heading for stdout is checked against them:
 
   ```python
-  load_ranbval(guard_stdout=True)
-
   print(f"{key.use()}")                # PermissionError
   print("Bearer " + key.use())         # PermissionError
   print({"api_key": f"{key.use()}"})   # PermissionError — nested, still caught
   print("ordinary output")             # fine
   ```
 
-  Still off by default: patching `print`/`stdout.write` is invasive, and while the guard is on the
-  registry holds each revealed plaintext for the life of the process — `str` subclasses cannot be
-  weak-referenced, so a value cannot be tracked without being kept. Nothing is retained while the
-  guard is off. Added `uninstall_output_guards()` to restore the originals and drop everything
-  held. Covers stdout only, and values of 8+ characters.
+  While the guard is installed the registry holds each revealed plaintext for the life of the
+  process — `str` subclasses cannot be weak-referenced, so a value cannot be tracked without being
+  kept. Nothing is retained while it is off. Added `uninstall_output_guards()` to restore the
+  originals and drop everything held. Values under 8 characters are not tracked; below that a
+  "secret" collides with ordinary output more often than it matches one.
+
+  See **Breaking** above for the default and for stderr/truncation coverage.
 
 - **`install_output_guards()` / `uninstall_output_guards()` are exported at the top level.** The
   README documented `install_output_guards()` by that name, but it was reachable only as

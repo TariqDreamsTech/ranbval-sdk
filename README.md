@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v4.0.0`
+# Ranbval SDK `v4.0.1`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
@@ -1012,7 +1012,7 @@ difference between two unguarded lines and an unguarded program.
 > process-wide for its duration too — it is not thread-local isolation. Keep the block to the
 > handoff itself, and use a `PROXY_` secret when the value must never exist in the process at all.
 
-### Output guard — catch a secret on its way to stdout, however it was formatted
+### Output guard — catch a secret on its way out, however it was formatted
 
 The guards above act on the **value**, so they only see a secret that is still a secret. Format it
 and the marker is gone:
@@ -1037,8 +1037,18 @@ print(f"{key.use()}")                # PermissionError
 print("Bearer " + key.use())         # PermissionError
 print("%s" % key.use())              # PermissionError
 print({"api_key": f"{key.use()}"})   # PermissionError — nested, still caught
+sys.stderr.write(f"{key.use()}")     # PermissionError
+logging.info("token=%s", f"{key}")   # never reaches the stream
+print(f"{key.use():.8}")             # RanbvalSecurityError — truncation, see below
+
 print("ordinary output")             # fine
+client = OpenAI(api_key=use.OPENAI_KEY)   # fine — passing is not printing
 ```
+
+**Truncation is blocked at the source.** `f"{key:.8}"` yields a *prefix*, which is not the value,
+so no content check can recognise it — it would print straight past the guard. A precision spec on
+a secret raises. Padding does not (`f"{key:>40}"`, `f"{key:.<40}"` — a `.` can be a fill character,
+which truncates nothing).
 
 **On by default since 4.0.0.** `load_ranbval()` installs it during load — the only point
 guaranteed to precede your first decrypt, since a guard installed after a reveal cannot recognise
@@ -1057,10 +1067,20 @@ Opt out with `load_ranbval(guard_stdout=False)`, or `uninstall_output_guards()` 
 opt-out is deliberately **not** an environment variable — an attacker able to set the environment
 should not be able to switch a security control off for free.
 
-**Honest limits:** stdout only — not stderr, not a file your app writes, not an outbound request.
+**Honest limits:**
+
+- Covers `sys.stdout` and `sys.stderr` **as they were when the guard was installed**. A stream
+  replaced afterwards — a redirect, a test capture fixture, a handler opened on a new file object
+  — is a different object and is not patched.
+- Not a file your app writes itself, not an outbound request, not a subprocess's output.
+- `logging` is covered only because its default handler writes to `sys.stderr`. The write raises,
+  but `logging` swallows handler exceptions, so you see `--- Logging error ---` rather than a
+  propagated failure. The credential still does not reach the stream.
+- Values shorter than 8 characters are not tracked; below that a "secret" collides with ordinary
+  output more often than it matches one.
+
 It is a guard against the accident (a debug `print` left in, a secret inside a logged dict), not
-against code that is deliberately exfiltrating. Values shorter than 8 characters are not tracked,
-because below that a "secret" collides with ordinary output more often than it matches one.
+against code that is deliberately exfiltrating.
 
 ### Access monitor — detect suspicious access / exfiltration
 

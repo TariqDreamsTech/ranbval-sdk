@@ -117,6 +117,12 @@ _EXTRACTION_MESSAGE = {
         "Note: the base str.__str__(val) call CANNOT be intercepted (the str type is immutable) — "
         "only a PROXY_ secret keeps the value off the client entirely. (set_enforcement(False) to disable.)"
     ),
+    "truncate": (
+        "Ranbval: truncating a secret in a format spec (f\"{key:.8}\") is blocked. The result is a "
+        "prefix rather than the value, so the stdout guard cannot recognise it and it would print "
+        "straight past every check — while no client library truncates a credential to build a "
+        "request. Format it without a precision (f\"Bearer {key}\") or pass key.use() directly."
+    ),
     "buffer_read": (
         "Ranbval: reading a secret's internal buffer (_buf/_pad) is blocked — no legitimate "
         "caller touches these. Use key.use() at the point of use. (set_enforcement(False) to "
