@@ -9,8 +9,10 @@ from ranbval_sdk.cli import _shared
 from ranbval_sdk.config import manifest
 from ranbval_sdk.config.loader import (
     _COMPETING_LOADERS,
+    _file_holds_project_secret,
     _parse_ranbval_file,
     find_ranbval_directory,
+    secret_file_mode_problem,
 )
 
 
@@ -51,6 +53,17 @@ def handle(args: argparse.Namespace) -> int:
     loaded = sorted({pkg for mod, pkg in _COMPETING_LOADERS.items() if mod in sys.modules})
     if loaded:
         warnings_.append(f"non-Ranbval env loader imported: {', '.join(loaded)}")
+
+    # The root key readable by other users is a real exposure, not a style nit — an error, so a
+    # CI job or pre-commit hook running `ranbval check` fails on it.
+    for path in sorted(root.glob(".ranbval*")):
+        if path.is_file() and _file_holds_project_secret(path):
+            mode = secret_file_mode_problem(path)
+            if mode is not None:
+                errors.append(
+                    f"{path.name} is {mode:04o} — your project secret is readable by other "
+                    f"users on this machine. Fix: chmod 600 {path.name}"
+                )
 
     print(
         f"{_shared.color('classified', 'dim')}: "

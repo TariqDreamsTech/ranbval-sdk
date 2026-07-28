@@ -21,6 +21,16 @@ def _isolate_ranbval_env(monkeypatch):
             monkeypatch.delenv(name, raising=False)
     yield
 
+def _write_private(path, text):
+    """Write a fixture file the way `ranbval init` does — 0600, owner only.
+
+    A fixture holding a project secret at the default 0644 trips the file-mode guard, burying
+    the guard's real signal under warnings unrelated to what the test checks.
+    """
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o600)
+
+
 _PREFIXED = """\
 RANBVAL_PROJECT_SECRET=proj-xxx
 
@@ -34,7 +44,7 @@ SECRET_OPENAI_API_KEY=ranbval.4ii0a0.BLOB.stripe
 
 @pytest.fixture
 def prefixed_env(tmp_path, monkeypatch):
-    (tmp_path / ".ranbval").write_text(_PREFIXED, encoding="utf-8")
+    _write_private(tmp_path / ".ranbval", _PREFIXED)
     monkeypatch.chdir(tmp_path)
     for key in ("PUBLIC_DATABASE_URL", "PUBLIC_CORS_ORIGINS", "PUBLIC_PORT", "SECRET_OPENAI_API_KEY"):
         monkeypatch.delenv(key, raising=False)
@@ -90,10 +100,10 @@ def test_section_header_rejected(tmp_path, monkeypatch):
 
 def test_infra_keys_exempt(tmp_path, monkeypatch):
     # RANBVAL_* and *_PROJECT_SECRET need no class prefix.
-    (tmp_path / ".ranbval").write_text(
+    _write_private(
+        tmp_path / ".ranbval",
         "RANBVAL_PROJECT_SECRET=proj-xxx\nMYAPP_PROJECT_SECRET=proj-yyy\n"
         "RANBVAL_HOST=https://api.secret.ranbval.com\nPUBLIC_X=1\n",
-        encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
     assert load_ranbval() is True  # must not raise
@@ -151,7 +161,7 @@ PROXY_OPENAI_KEY=ranbval.cc.dd.openai
 
 @pytest.fixture
 def proxy_env(tmp_path, monkeypatch):
-    (tmp_path / ".ranbval").write_text(_PROXY, encoding="utf-8")
+    _write_private(tmp_path / ".ranbval", _PROXY)
     monkeypatch.chdir(tmp_path)
     for key in ("PUBLIC_DATABASE_URL", "SECRET_DASHBOARD_PASSWORD", "PROXY_OPENAI_KEY"):
         monkeypatch.delenv(key, raising=False)

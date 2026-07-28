@@ -209,6 +209,57 @@ def _assert_secret_not_committable(paths: list[Path]) -> None:
     )
 
 
+def secret_file_mode_problem(path: Path) -> int | None:
+    """Return the file's mode when it is group/other-readable, else ``None``.
+
+    POSIX only — Windows does not express access this way, and its ``st_mode`` bits are
+    synthesised, so reading them would produce a warning nobody can act on. Returns ``None``
+    there, and on any stat error (a mode we cannot read is not evidence of a bad mode).
+    """
+    if os.name != "posix":
+        return None
+    try:
+        mode = os.stat(path).st_mode & 0o777
+    except OSError:
+        return None
+    return mode if mode & 0o077 else None
+
+
+def _check_secret_file_modes(paths: list[Path]) -> None:
+    """Warn (or refuse) when the file holding the project secret is readable by other users.
+
+    The project secret is the root key: whoever reads it unseals every token in ``.ranbval``.
+    A default umask of 022 creates that file as ``0644`` — world-readable — so on a shared box,
+    a build agent, or any host with more than one account, the vault is readable by everyone
+    with a login. ``ssh`` refuses to use a private key in this state; this is the same problem.
+
+    Warns rather than raising, because ``0644`` is what the OS default produces rather than
+    something the user did wrong, and a hard failure on upgrade would break working installs
+    over a pre-existing condition. Set ``RANBVAL_STRICT_FILE_MODE=1`` to refuse instead — worth
+    doing in CI and production images, where the fix is a one-line ``chmod``.
+    """
+    offenders = [
+        (p, mode)
+        for p in paths
+        if _file_holds_project_secret(p) and (mode := secret_file_mode_problem(p)) is not None
+    ]
+    if not offenders:
+        return
+
+    detail = ", ".join(f"{p.name} is {mode:04o}" for p, mode in offenders)
+    fix = " ".join(f"chmod 600 {p.name};" for p, _ in offenders).rstrip(";")
+    message = (
+        f"{detail} — your project secret is readable by other users on this machine, and that "
+        f"key unseals every token in .ranbval. Fix it with:\n"
+        f"    {fix}\n"
+        f"(Set RANBVAL_STRICT_FILE_MODE=1 to make this an error instead of a warning.)"
+    )
+
+    if os.environ.get("RANBVAL_STRICT_FILE_MODE", "").strip().lower() in _TRUTHY:
+        raise RanbvalConfigError(message, code="secret_file_world_readable")
+    warnings.warn(f"Ranbval: {message}", stacklevel=3)
+
+
 def find_ranbval_directory(start: Path | str | None = None) -> Path | None:
     """
     Nearest directory (cwd → parents) that contains ``.ranbval`` or any ``.ranbval.*`` file.
@@ -389,6 +440,7 @@ def load_ranbval(
         if not p.is_file():
             return False
         _assert_secret_not_committable([p])
+        _check_secret_file_modes([p])
         config_root = p.parent
         merged = _parse_ranbval_file(p)
     else:
@@ -407,6 +459,7 @@ def load_ranbval(
             return False
         # Before anything else: if a file holding the project secret is committable, stop.
         _assert_secret_not_committable(layers)
+        _check_secret_file_modes(layers)
         merged = {}
         for layer_path in layers:
             merged.update(_parse_ranbval_file(layer_path))
