@@ -80,9 +80,49 @@ from three other things, and Ranbval gives you all three:
 
 ## Quick Start
 
+One word per secret. `use.NAME` loads `.ranbval` on first touch, finds the key whatever prefix it
+carries, decrypts it, caches it, and hands your client a value it can use directly:
+
+```python
+from ranbval_sdk import use
+import openai
+
+client = openai.OpenAI(api_key=use.OPENAI_KEY)     # finds SECRET_OPENAI_KEY
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+```
+
+Write the **short** name — `use.OPENAI_KEY` tries `OPENAI_KEY`, `SECRET_OPENAI_KEY` and
+`PUBLIC_OPENAI_KEY` in turn, so renaming a key's prefix in `.ranbval` doesn't break your code. Exact
+names work too. A missing key raises `MissingKeyError` naming every spelling it tried — never a
+silent `None`.
+
+Shorter code, same guards: the returned value is still sealed (`repr` masked, pickling refused,
+iteration/slicing/`str()` still raise), and every access is still audited. See
+[Enforcement](#enforcement--extraction-attempts-raise-strict-by-default).
+
+`.ranbval` (safe to commit — every value is sealed):
+```bash
+SECRET_OPENAI_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
+```
+
+`.ranbval.local` (**never** commit this file — it holds the key that unseals the rest):
+```bash
+RANBVAL_PROJECT_SECRET=your_dashboard_project_secret
+```
+
+<details>
+<summary><b>The explicit form</b> — when you want each step visible</summary>
+
+`use` is a shortcut, not a different mechanism. Every step it performs is still available on its
+own, and nothing about the explicit form has changed:
+
 ```python
 from ranbval_sdk import load_ranbval, decrypt_key
-import os, openai
+import openai
 
 # 1. Load encrypted config from .ranbval files (no network, no decryption)
 load_ranbval()
@@ -93,18 +133,16 @@ api_key = decrypt_key("SECRET_OPENAI_KEY")
 
 # 3. Pass directly to the SDK — value is never exposed in logs or prints
 client = openai.OpenAI(api_key=api_key.use())
-
-response = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[{"role": "user", "content": "Hello"}],
-)
 ```
 
-`.ranbval.local` (never commit this file):
-```bash
-RANBVAL_PROJECT_SECRET=your_dashboard_project_secret
-SECRET_OPENAI_KEY=ranbval.4ii0a022aa.p1GOZ...ahsan
-```
+Reach for it when you need a stage pinned, a `SecretString` rather than a ready-to-pass value, or
+an explicit `reveal_scope` / `enforcement_scope` around the handoff.
+
+</details>
+
+> **`use` will not hand back a `PROXY_` secret.** Those are meant never to be decrypted on your
+> machine, so returning one as a string would defeat the point. Use
+> [`ranbval_httpx_client()`](#running-a-client-library-through-the-proxy) or `proxy_request()`.
 
 ## CLI
 
@@ -267,6 +305,8 @@ and `PUBLIC_` value inside it; a project always keeps at least one.
 
 | Symbol | Description |
 |--------|-------------|
+| `use` | One word per secret — `use.NAME` loads, resolves the prefix, decrypts and caches in a single attribute access |
+| `Use` | The class behind `use`, for pinning a stage: `Use(mode="staging").SUPABASE_URL` |
 | `load_ranbval()` | Merges layered `.ranbval*` files into `os.environ`; `remote=True, environment="…"` pulls one stage from the control plane |
 | `public()` | Read a plaintext (unencrypted) config value — never decrypts |
 | `public_config()` | Dict of every `PUBLIC_`-prefixed key as `{name: plaintext}` |
@@ -276,8 +316,11 @@ and `PUBLIC_` value inside it; a project always keeps at least one.
 | `SecretString` | Wrapper that blocks all display paths — value only via `.use()` |
 | `require_reveal_scope()` / `reveal_scope()` | Restrict a secret so `.use()` works only inside an approved block |
 | `install_access_monitor()` | Detect & report suspicious secret access / possible exfiltration |
-| `set_enforcement()` / `is_enforced()` | Toggle strict mode — extraction attempts raise `RanbvalSecurityError` (on by default) |
+| `set_enforcement()` / `is_enforced()` | Toggle strict mode process-wide — extraction attempts raise `RanbvalSecurityError` (on by default) |
+| `enforcement_scope()` | Relax the guards for **one block** and restore them after — prefer this over the process-wide switch |
+| `set_strict_encode()` | Make `.encode()` raise again instead of being audited-but-allowed |
 | `proxy_request()` | Route an HTTP request through the Ranbval proxy (key injected server-side) |
+| `ranbval_httpx_client()` | An `httpx.Client` that proxies every request — run `supabase`/`openai` with the key never local |
 | `emit_telemetry()` | Record a **custom** usage event (basic usage is auto-reported on every `decrypt_key()`) |
 | `get_audit_log()` | Return the in-process audit log list |
 | `clear_audit_log()` | Clear the in-process audit log |
@@ -301,10 +344,14 @@ ranbval_sdk/
 ├── config/              # your .ranbval configuration surface
 │   ├── loader.py        #   load_ranbval, find_*, resolve_ranbval_mode, get_project_key
 │   ├── access.py        #   imperative access — Vault, env, inject, secrets, iter_secrets
+│   ├── quick.py         #   the one-word form — use.NAME (prefix resolution + cache)
+│   ├── reveal.py        #   reveal scopes — .use() only at approved call sites
 │   └── declarative.py   #   class-based access — Secret, SecretConfig
 ├── crypto/              # cryptography & sealed secrets (only crypto lives here)
 │   ├── cipher.py        #   AES-256-GCM decrypt + project-secret resolution
 │   ├── secret_string.py #   SecretString — the sealed, never-printable value
+│   ├── enforcement.py   #   extraction guards, enforcement_scope, handoff methods
+│   ├── memory.py        #   best-effort RAM pinning (mlock), per-platform
 │   └── audit.py         #   in-memory log of every .use()
 ├── policy/              # provenance & access policy (the decrypt gate)
 │   └── repo.py          #   git-remote allowlist enforcement (server-controlled)
@@ -319,7 +366,8 @@ ranbval_sdk/
 │   ├── sampling.py      #   adaptive aggregation (first-seen send, repeats counted)
 │   └── decorators.py    #   @track / tracked()
 ├── integrations/        # optional server-side proxy
-│   └── proxy.py         #   proxy_request / aproxy_request (key never leaves the server)
+│   ├── proxy.py         #   proxy_request / aproxy_request (key never leaves the server)
+│   └── httpx_transport.py #  run any httpx-based client library through that proxy
 └── _internal/           # private cross-cutting utilities
     ├── defaults.py      #   shared constants
     ├── logging.py       #   opt-in stderr diagnostics (RANBVAL_TELEMETRY_DEBUG)
@@ -333,6 +381,47 @@ ranbval_sdk/
 ---
 
 ## Function Reference
+
+### `use`
+
+The one-word form. `use.NAME` performs the whole sequence — load, resolve, decrypt, cache — on a
+single attribute access, and returns a value your client library can use directly.
+
+```python
+from ranbval_sdk import use
+
+use.SUPABASE_URL        # sealed value, ready to pass to any client
+use["SUPABASE_URL"]     # item access, same thing
+"SUPABASE_URL" in use   # membership test
+use.get("MAYBE", "fallback")
+use.wipe()              # drop every cached plaintext; later reads decrypt again
+```
+
+**Name resolution.** `SECRET_`, `PUBLIC_` and the bare spelling are tried in turn, so
+`use.SUPABASE_TOKEN` finds `SECRET_SUPABASE_TOKEN`. A miss raises `MissingKeyError` listing every
+name it tried.
+
+**What you get back** depends on how the key is classified in `.ranbval`:
+
+| prefix in `.ranbval` | returned |
+|---|---|
+| `PUBLIC_` | a plain `str` — it was never a secret |
+| `SECRET_` | a sealed value: real `str` to your client, masked `repr`, unpicklable, guarded |
+| `PROXY_` | **refused** — `RanbvalConfigError`, because it must never decrypt here |
+
+**Where `.ranbval` is found:** searched upward from the current directory, so any subfolder of your
+project works; running from outside it raises `MissingKeyError`. `.ranbval.local` must be present —
+it holds the root key, and without it decryption fails with `RanbvalConfigError`.
+
+**Pin a stage** with the class:
+
+```python
+from ranbval_sdk import Use
+staging = Use(mode="staging")
+client = create_client(staging.SUPABASE_URL, staging.SUPABASE_TOKEN)
+```
+
+---
 
 ### `load_ranbval()`
 
@@ -634,6 +723,51 @@ except ProxyError as e:
 
 ---
 
+### Running a client library through the proxy
+
+`proxy_request()` keeps a `PROXY_` secret off your machine entirely — but it only speaks raw HTTP,
+so you lose the client library and hand-roll requests instead. That's a bad trade: the libraries
+exist for a reason.
+
+`ranbval_httpx_client()` closes the gap. It is an ordinary `httpx.Client` whose transport forwards
+every request through Ranbval, so the library keeps working exactly as written while the credential
+is injected server-side:
+
+```python
+from supabase import create_client, ClientOptions
+from ranbval_sdk import proxy_token
+from ranbval_sdk.integrations.httpx_transport import ranbval_httpx_client
+
+supabase = create_client(
+    use.SUPABASE_URL, "unused-placeholder",
+    options=ClientOptions(httpx_client=ranbval_httpx_client(
+        token=proxy_token("PROXY_SUPABASE_TOKEN"),
+        inject_as="header:apikey",
+    )),
+)
+
+supabase.table("profiles").select("*").execute()   # normal SDK call, key never local
+```
+
+This is stronger than any enforcement setting: there is no plaintext in the process to guard, so
+there is nothing to reveal — no window, no flag, no honour system. The placeholder key you pass the
+library is never used; the proxy overwrites that header.
+
+Works with anything that accepts a custom `httpx` client — `supabase`'s
+`ClientOptions(httpx_client=…)`, `openai`'s `http_client=…`, and so on.
+
+**Limits worth knowing:**
+
+- Every request takes an extra hop through Ranbval, and each one counts against your plan.
+- Streaming and websocket transports are **not** proxied (Supabase Realtime, SSE) — those still
+  need a local credential.
+- Libraries that don't use `httpx` — `psycopg2`, `asyncpg`, `redis`, anything on raw sockets —
+  can't be proxied this way. They need the credential in-process, and no in-process tool can
+  change that; scope it with `reveal_scope` + `enforcement_scope` and rely on rotation and
+  least-privilege roles instead.
+
+---
+
 ### `get_audit_log()` / `clear_audit_log()`
 
 The SDK records every decrypt and telemetry event in an in-process audit log. Useful for testing and compliance verification.
@@ -812,8 +946,9 @@ client = OpenAI(api_key=key.use())    # ✅ correct — pass it straight in
 f"Bearer {val}"                        # ✅ works (SDK header building)
 "Bearer " + val                        # ✅ works (concatenation)
 
+val.encode()                           # ✅ works, and is audited (see below)
+
 "".join(c for c in val)                # ❌ RanbvalSecurityError (iteration)
-val.encode()                           # ❌ RanbvalSecurityError (encode)
 val[:]  /  val[0]                       # ❌ RanbvalSecurityError (slice / index)
 str(val)  /  print(val)  /  "%s" % val  # ❌ RanbvalSecurityError (str/display)
 some_secret._buf                       # ❌ RanbvalSecurityError (buffer read)
@@ -824,13 +959,52 @@ object.__getattribute__(s, "_buf")     # ❌ RanbvalSecurityError (honeypot prop
 > `set_enforcement(False)` it masks as before. `repr(val)` always stays masked (so error
 > reporters and debuggers don't crash).
 
-If a legitimate library trips it (an AWS SigV4 signer or a DB driver that must `.encode()` the
-credential), turn enforcement off process-wide:
+#### Why `.encode()` is audited rather than blocked
+
+Blocking it was measured against what it actually bought, and the answer was nothing:
+
+| spelling | result |
+|---|---|
+| `f"{val}"` | full plaintext — **no guard, not even a monitor event** |
+| `"{}".format(val)` | full plaintext |
+| `val.encode()` | *used to* raise |
+
+Anyone after the plaintext writes `f"{val}"`. Meanwhile `httpx` calls `value.encode("ascii")` on
+every header value it builds, so the guard's only reliable effect was to push real users into
+`set_enforcement(False)` **process-wide** — switching off the guards that do work, for the whole
+life of the app. A guard that reliably causes security to be disabled is worse than no guard.
+
+So `.encode()` is now recorded in the audit log and seen by the access monitor, but allowed.
+Restore the old loud failure if your threat model prefers it:
 
 ```python
-from ranbval_sdk import set_enforcement
-set_enforcement(False)   # back to detect + notify (value returned, event still fires)
+from ranbval_sdk import set_strict_encode
+set_strict_encode(True)    # .encode() raises again
 ```
+
+Note that with strict encode on, every `httpx`/`requests`-based client must be constructed inside
+an `enforcement_scope` block, because header building always encodes.
+
+#### When a library genuinely trips a guard
+
+An AWS SigV4 signer or a DB driver may slice or iterate the credential. Narrow the window to the
+handoff line — **don't** disable enforcement process-wide:
+
+```python
+from ranbval_sdk import enforcement_scope
+
+with enforcement_scope(False):          # the only unguarded window
+    client = SomeClient(use.API_KEY)
+
+# strict again from here on, for every other line of the app
+```
+
+`set_enforcement(False)` still exists for the whole-process switch, but prefer the scope: it is the
+difference between two unguarded lines and an unguarded program.
+
+> **Honest limit.** Enforcement is a single process-wide flag, so `enforcement_scope` is
+> process-wide for its duration too — it is not thread-local isolation. Keep the block to the
+> handoff itself, and use a `PROXY_` secret when the value must never exist in the process at all.
 
 ### Access monitor — detect suspicious access / exfiltration
 

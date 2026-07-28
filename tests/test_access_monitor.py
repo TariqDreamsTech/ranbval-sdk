@@ -165,10 +165,24 @@ def test_list_iteration_raises_by_default(enforced):
         list(val)
 
 
-def test_encode_raises_by_default(enforced):
+def test_encode_is_audited_but_allowed_by_default(enforced):
+    # encode() is how httpx turns a header value into bytes, and f"{val}" already returns the
+    # plaintext for free — so blocking it bought nothing and pushed callers into
+    # set_enforcement(False) process-wide. It is now recorded, not fatal.
     val = SecretString("sk-secret").use()
-    with pytest.raises(RanbvalSecurityError):
-        val.encode()
+    assert val.encode() == b"sk-secret"
+
+
+def test_encode_raises_again_under_strict_encode(enforced):
+    from ranbval_sdk import set_strict_encode
+
+    set_strict_encode(True)
+    try:
+        val = SecretString("sk-secret").use()
+        with pytest.raises(RanbvalSecurityError):
+            val.encode()
+    finally:
+        set_strict_encode(False)
 
 
 def test_buffer_read_raises_by_default(enforced):

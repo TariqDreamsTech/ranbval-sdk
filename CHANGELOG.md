@@ -4,6 +4,94 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [3.7.0] - 2026-07-28
+
+The theme of this release is that **security you have to switch off isn't security**. Three of the
+four changes below exist because the previous defaults were reliably pushing people into
+`set_enforcement(False)` for the whole process.
+
+### Added
+
+- **`use` — one word per secret.** `use.NAME` loads `.ranbval` on first touch, resolves the prefix,
+  decrypts, caches, and returns a value a client library can take directly. The whole program:
+
+  ```python
+  from ranbval_sdk import use
+  from supabase import create_client
+
+  supabase = create_client(use.SUPABASE_URL, use.SUPABASE_TOKEN)
+  ```
+
+  Write the **short** name — `SECRET_`, `PUBLIC_` and the bare spelling are tried in turn, so
+  changing a key's prefix in `.ranbval` doesn't break your code. A miss raises `MissingKeyError`
+  naming every spelling it tried, never a silent `None`.
+
+  Shorter code, not weaker code: the value is still sealed (masked `repr`, unpicklable,
+  iteration/slicing/`str()` still raise), and every access is still audited. `PROXY_` secrets are
+  **refused** — they are meant never to decrypt on your machine. `Use(mode="staging")` pins a stage.
+
+- **`enforcement_scope()`** — relax the extraction guards for one block and restore whatever was set
+  before, instead of switching them off for the life of the process:
+
+  ```python
+  with enforcement_scope(False):        # the only unguarded window
+      client = SomeClient(use.API_KEY)
+  # strict again for every other line
+  ```
+
+  *Honest limit:* enforcement is a single process-wide flag, so the window is process-wide for its
+  duration too — this is not thread-local isolation.
+
+- **`ranbval_httpx_client()` / `RanbvalProxyTransport`** (`ranbval_sdk.integrations.httpx_transport`)
+  — run a real client library through the secure proxy. Previously `proxy_request()` kept a `PROXY_`
+  secret off the machine but only spoke raw HTTP, so you had to give up the library and hand-roll
+  requests. Now:
+
+  ```python
+  supabase = create_client(
+      url, "unused-placeholder",
+      options=ClientOptions(httpx_client=ranbval_httpx_client(
+          token=proxy_token("PROXY_SUPABASE_TOKEN"), inject_as="header:apikey")),
+  )
+  supabase.table("profiles").select("*").execute()   # normal call, key never local
+  ```
+
+  Stronger than any enforcement setting: there is no plaintext in the process to guard. Works with
+  anything accepting a custom `httpx` client (`supabase`, `openai`, …). Not applicable to streaming
+  or websocket transports, nor to libraries on raw sockets (`psycopg2`, `redis`).
+
+### Changed
+
+- **`.encode()` is now audited rather than blocked.** It is recorded in the audit log and seen by
+  the access monitor, but no longer raises. `set_strict_encode(True)` restores the old behaviour.
+
+  *Why.* The guard bought no secrecy: `f"{val}"` and `"{}".format(val)` already return the full
+  plaintext through `__format__` — with no guard and not even a monitor event. Anyone after the
+  value writes the f-string. Meanwhile `httpx` calls `value.encode("ascii")` on every header value
+  it builds, so the guard's one reliable effect was to make working code impossible without
+  `set_enforcement(False)` process-wide — disabling the guards that *do* work, permanently. A guard
+  that reliably causes security to be switched off is worse than no guard.
+
+  Every other guard is untouched: iteration, slicing/indexing, `str()`/`print()`, and `_buf`/`_pad`
+  reads still raise `RanbvalSecurityError`.
+
+- **`set_enforcement(False)` is no longer the documented remedy** for a library that trips a guard.
+  Use `enforcement_scope(False)` around the handoff line. The process-wide switch remains for
+  compatibility.
+
+### Testing
+
+- CI now covers **every supported interpreter on every supported OS** — Python 3.10–3.14 across
+  Ubuntu, macOS and Windows (15 jobs, `fail-fast: false`). Previously only 3.10–3.12 on Ubuntu ran,
+  while the package claimed 3.13 support and "OS Independent"; `crypto/memory.py` selects its
+  `mlock` syscall per platform, so the OS axis exercises genuinely different code.
+- Added an advisory **3.15-dev** job (`continue-on-error`) to catch CPython breakage early without
+  blocking PRs, and a **`wheel-install`** matrix that installs the built artifact — with no source
+  checkout present — and smoke-tests `import ranbval_sdk` plus the `ranbval` CLI on the full grid.
+- Python 3.14 added to the classifiers.
+
+---
+
 ## [3.6.0] - 2026-07-20
 
 ### Added
