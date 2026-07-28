@@ -6,17 +6,47 @@ on:
   pull_request:
 
 jobs:
+  # Every interpreter the package claims to support (requires-python = ">=3.10") on every OS the
+  # classifiers claim ("Operating System :: OS Independent") — 15 jobs, the full grid.
+  #
+  # The OS axis is not padding: crypto/memory.py picks its mlock syscall per platform
+  # (libc.so.6 on Linux, libc.dylib on macOS, unsupported elsewhere), so Windows exercises a
+  # genuinely different code path. fail-fast is off so one broken cell does not cancel the
+  # other fourteen and hide how wide the breakage really is.
   test:
-    runs-on: ubuntu-latest
+    name: py${{ matrix.python-version }} · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+      - name: Tests
+        run: python -m pytest -q
+
+  # Next interpreter, before it ships. Advisory only: a CPython beta breaking us is worth
+  # knowing about, but it must never block a PR on a version nobody runs in production yet.
+  test-prerelease:
+    name: py3.15-dev (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15-dev"
+          allow-prereleases: true
       - name: Install
         run: |
           python -m pip install --upgrade pip
@@ -43,3 +73,36 @@ jobs:
           grep -q "## \[$VERSION\]" CHANGELOG.md \
             || { echo "::error::pyproject version $VERSION has no CHANGELOG entry"; exit 1; }
           echo "✅ $VERSION is in the changelog"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # The wheel is what users actually install — the `test` job installs from the source tree,
+  # which is not the same thing. Prove the built artifact installs and runs on the whole grid,
+  # with no source checkout present at all (note: no actions/checkout here, on purpose).
+  wheel-install:
+    name: wheel · py${{ matrix.python-version }} · ${{ matrix.os }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Install the wheel and smoke-test it
+        # shell: bash on every OS — PowerShell (the Windows default) does not expand dist/*.whl,
+        # so the install would silently receive a literal asterisk and fail.
+        shell: bash
+        run: |
+          pip install dist/*.whl
+          python -c "import ranbval_sdk; print(ranbval_sdk.__version__)"
+          ranbval --help
