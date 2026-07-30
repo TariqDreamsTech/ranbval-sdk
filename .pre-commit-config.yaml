@@ -62,7 +62,9 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.0
     hooks:
-      - id: ruff
+      # `ruff-check` since 0.13; the bare `ruff` id still works but is a deprecated alias and
+      # will eventually stop resolving.
+      - id: ruff-check
         args: [--fix]
       - id: ruff-format
 
