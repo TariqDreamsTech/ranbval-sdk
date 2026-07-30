@@ -101,7 +101,9 @@ check("legit f-string still works (no raise)", f"Bearer {val}" == "Bearer sk-dem
 check("legit concat still works (no raise)", ("Bearer " + val) == "Bearer sk-demo")
 # Honest floor — these CANNOT be blocked in-process (documented), so we don't fake it:
 check("str.__str__(val) still bypasses (str type immutable)", str.__str__(val) == "sk-demo")
-check("real slot _b still readable (open-source floor)", object.__getattribute__(s5, "_b") is not None)
+check(
+    "real slot _b still readable (open-source floor)", object.__getattribute__(s5, "_b") is not None
+)
 
 # ── 5b. Access monitor — with enforcement off, attempts are DETECTED + reported ─
 print("\n5b) ACCESS MONITOR (enforcement off → detect + notify)")
@@ -116,9 +118,7 @@ events.clear()
 _ = val.encode()
 check("encode() detected", any(e.get("method") == "encode" for e in events))
 events.clear()
-open(
-    os.path.join(os.getcwd(), ".rb_demo_tmp"), "w"
-).close()  # file write right after .use()
+open(os.path.join(os.getcwd(), ".rb_demo_tmp"), "w").close()  # file write right after .use()
 check(
     "file write after .use() detected",
     any(e.get("method") == "file_write" for e in events),
@@ -147,7 +147,5 @@ check(
 )
 
 print("\n(For the [proxy]/[secrets]/[public] behaviour and decrypt_key/proxy flows,")
-print(
-    " use a real .ranbval — see README 'Three sections' and 'Trusted-party controls'.)"
-)
+print(" use a real .ranbval — see README 'Three sections' and 'Trusted-party controls'.)")
 print("\nDone.")

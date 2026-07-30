@@ -17,7 +17,6 @@ def _write_private(path, text):
     path.chmod(0o600)
 
 
-
 def test_init_creates_files(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     assert main(["init"]) == 0
@@ -70,8 +69,15 @@ def test_check_warns_on_section_header(tmp_path, monkeypatch, capsys):
 def test_run_injects_and_execs(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".ranbval").write_text("PUBLIC_APP_NAME=demo\n", encoding="utf-8")
-    code = main(["run", "--", sys.executable, "-c",
-                 "import os,sys; sys.exit(0 if os.environ.get('PUBLIC_APP_NAME')=='demo' else 3)"])
+    code = main(
+        [
+            "run",
+            "--",
+            sys.executable,
+            "-c",
+            "import os,sys; sys.exit(0 if os.environ.get('PUBLIC_APP_NAME')=='demo' else 3)",
+        ]
+    )
     assert code == 0
 
 

@@ -53,14 +53,14 @@ class TestNameResolution:
 
     def test_missing_key_names_every_spelling_it_tried(self, u):
         with pytest.raises(MissingKeyError) as exc:
-            u.NOPE
+            u.NOPE  # noqa: B018 — the attribute access is what must raise
         for spelling in ("'NOPE'", "'SECRET_NOPE'", "'PUBLIC_NOPE'"):
             assert spelling in str(exc.value)
 
     def test_proxy_secret_is_refused_not_decrypted(self, u):
         # The whole point of PROXY_ is that the plaintext never reaches this machine.
         with pytest.raises(RanbvalConfigError) as exc:
-            u.STRIPE_KEY
+            u.STRIPE_KEY  # noqa: B018 — the attribute access is what must raise
         assert exc.value.code == "proxy_secret_not_revealable"
 
     def test_contains_and_get(self, u):
@@ -109,7 +109,7 @@ class TestStillSealed:
         assert u._cache == {}
 
     def test_repr_of_use_never_shows_values(self, u):
-        u.REGION
+        u.REGION  # noqa: B018 — populate the cache, then check repr does not expose it
         assert "eu-west-1" not in repr(u)
 
 

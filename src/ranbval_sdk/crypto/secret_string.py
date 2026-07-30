@@ -50,6 +50,8 @@ from __future__ import annotations
 
 import hmac
 import os
+from collections.abc import Callable
+from typing import NoReturn, SupportsIndex
 
 from ranbval_sdk.crypto import enforcement, memory
 
@@ -57,10 +59,10 @@ from ranbval_sdk.crypto import enforcement, memory
 # called with each plaintext a ``.use()`` reveals, so the guard can recognise that value later in
 # an ordinary ``str`` — the form an f-string or concatenation produces, which carries no type we
 # could test. ``None`` (the default) means nothing is retained.
-_reveal_sink: object = None
+_reveal_sink: Callable[[str], None] | None = None
 
 
-def set_reveal_sink(fn: object) -> None:
+def set_reveal_sink(fn: Callable[[str], None] | None) -> None:
     """Register (or clear with ``None``) the revealed-plaintext sink used by the output guard."""
     global _reveal_sink
     _reveal_sink = fn
@@ -166,7 +168,7 @@ class _ProtectedStr(str):
     def __deepcopy__(self, memo: object) -> _ProtectedStr:
         return self
 
-    def __reduce_ex__(self, protocol: int) -> object:
+    def __reduce_ex__(self, protocol: SupportsIndex) -> NoReturn:
         raise TypeError("Ranbval secret cannot be pickled (it would expose the plaintext).")
 
 
@@ -179,10 +181,10 @@ def _reconstruct(buf: bytearray, pad: bytearray) -> bytes:
 
 # Set by :mod:`ranbval_sdk.config.reveal`. Called with the secret's label inside ``.use()``; it
 # raises if that secret is restricted to a reveal scope and we are not inside one.
-_reveal_gate: object = None
+_reveal_gate: Callable[[str], None] | None = None
 
 
-def set_reveal_gate(fn: object) -> None:
+def set_reveal_gate(fn: Callable[[str], None] | None) -> None:
     """Register (or clear with ``None``) the reveal-scope gate ``fn(label)`` used by ``.use()``."""
     global _reveal_gate
     _reveal_gate = fn
@@ -303,7 +305,7 @@ class SecretString:
     # Refuse serialization and duplication. A slotted object would otherwise pickle its bytes
     # straight into a cache/queue/error report, and a deepcopy would scatter extra plaintext
     # copies through memory. Both are blocked.
-    def __reduce_ex__(self, protocol: int) -> object:
+    def __reduce_ex__(self, protocol: SupportsIndex) -> NoReturn:
         raise TypeError("SecretString cannot be pickled (it would expose the secret).")
 
     def __copy__(self) -> SecretString:

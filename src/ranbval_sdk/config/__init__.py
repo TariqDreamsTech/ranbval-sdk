@@ -20,7 +20,6 @@ from ranbval_sdk.config.access import (
     secrets,
 )
 from ranbval_sdk.config.declarative import Secret, SecretConfig
-from ranbval_sdk.config.quick import Use, use
 from ranbval_sdk.config.loader import (
     find_ranbval_directory,
     find_ranbval_file,
@@ -28,6 +27,7 @@ from ranbval_sdk.config.loader import (
     load_ranbval,
     resolve_ranbval_mode,
 )
+from ranbval_sdk.config.quick import Use, use
 from ranbval_sdk.config.reveal import (
     clear_reveal_requirements,
     require_reveal_scope,

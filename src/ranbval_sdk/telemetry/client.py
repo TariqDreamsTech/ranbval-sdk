@@ -29,10 +29,9 @@ from ranbval_sdk.serializers.telemetry import build_telemetry_payload
 from ranbval_sdk.serializers.token import salt_from_ranbval_token  # noqa: F401
 from ranbval_sdk.telemetry.context import collect_client_context
 
-
 #: Background emits that have not landed yet. Joined at exit so a short-lived process — the shape
 #: every credential theft takes — still reports the use that would trip a canary.
-_inflight: "set[threading.Thread]" = set()
+_inflight: set[threading.Thread] = set()
 _inflight_lock = threading.Lock()
 
 
@@ -86,9 +85,7 @@ def emit_telemetry(
         if not salt:
             return
 
-        h = (host_url or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip(
-            "/"
-        )
+        h = (host_url or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip("/")
         repo_path = os.getcwd()
         machine_name = socket.gethostname()
         git_url = _get_git_remote()

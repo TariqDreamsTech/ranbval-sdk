@@ -30,7 +30,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_check.set_defaults(func=check.handle)
 
     p_run = sub.add_parser("run", help="load .ranbval into the environment, then run a command")
-    p_run.add_argument("--allow-other-loaders", action="store_true", help="skip the sole-loader check")
+    p_run.add_argument(
+        "--allow-other-loaders", action="store_true", help="skip the sole-loader check"
+    )
     p_run.add_argument("command", nargs=argparse.REMAINDER, help="command to run (after --)")
     p_run.set_defaults(func=run.handle)
     return parser

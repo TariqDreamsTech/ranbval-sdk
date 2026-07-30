@@ -45,7 +45,13 @@ def test_a_spent_allowance_raises_a_plan_error_not_a_proxy_error(monkeypatch):
     monkeypatch.setattr(proxy.urllib.request, "urlopen", boom)
 
     with pytest.raises(PlanLimitError) as e:
-        proxy.proxy_request("tok", "https://api.example.com/v1", body={"model": "x"}, api_key="rk_test", project_secret="ps_test")
+        proxy.proxy_request(
+            "tok",
+            "https://api.example.com/v1",
+            body={"model": "x"},
+            api_key="rk_test",
+            project_secret="ps_test",
+        )
 
     err = e.value
     assert (err.used, err.limit, err.period) == (1001, 1000, "2026-07")
@@ -63,13 +69,20 @@ def test_a_plan_error_is_still_catchable_as_a_ranbval_error():
 
 def test_other_proxy_failures_stay_proxy_errors(monkeypatch):
     """A 500 is not a billing problem; it must not be dressed up as one."""
+
     def boom(*_a, **_k):
         raise _http_error(500, "upstream exploded")
 
     monkeypatch.setattr(proxy.urllib.request, "urlopen", boom)
 
     with pytest.raises(proxy.ProxyError):
-        proxy.proxy_request("tok", "https://api.example.com/v1", body={"model": "x"}, api_key="rk_test", project_secret="ps_test")
+        proxy.proxy_request(
+            "tok",
+            "https://api.example.com/v1",
+            body={"model": "x"},
+            api_key="rk_test",
+            project_secret="ps_test",
+        )
 
 
 def test_plan_status_reports_but_never_blocks(monkeypatch):
@@ -79,9 +92,7 @@ def test_plan_status_reports_but_never_blocks(monkeypatch):
         "limits": {"requests_month": 1000, "secrets": 5, "projects": 1},
         "usage": {"requests_month": 1000, "requests_remaining": 0, "period": "2026-07"},
     }
-    monkeypatch.setattr(
-        "ranbval_sdk.remote.client._post", lambda *_a, **_k: spent
-    )
+    monkeypatch.setattr("ranbval_sdk.remote.client._post", lambda *_a, **_k: spent)
     status = ranbval_sdk.plan_status(project_secret="ps_test")
     assert status["usage"]["requests_remaining"] == 0
 
@@ -94,5 +105,11 @@ def test_plan_status_reports_but_never_blocks(monkeypatch):
 
     monkeypatch.setattr(proxy.urllib.request, "urlopen", fake_urlopen)
     with pytest.raises(proxy.ProxyError):
-        proxy.proxy_request("tok", "https://api.example.com/v1", body={"model": "x"}, api_key="rk_test", project_secret="ps_test")
+        proxy.proxy_request(
+            "tok",
+            "https://api.example.com/v1",
+            body={"model": "x"},
+            api_key="rk_test",
+            project_secret="ps_test",
+        )
     assert called["n"] == 1

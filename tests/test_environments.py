@@ -1,7 +1,5 @@
 """Environment selection: which stage a remote pull fetches."""
 
-import os
-
 import pytest
 
 from ranbval_sdk.remote import client as remote_client

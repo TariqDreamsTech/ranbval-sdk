@@ -87,9 +87,7 @@ def _fetch_repo_policy_uncached(ranbval_host: str, client_salt: str) -> dict:
     base = ranbval_host.rstrip("/")
     qs = urllib.parse.urlencode({"client_salt": client_salt})
     url = f"{base}/api/public/repo-policy?{qs}"
-    req = urllib.request.Request(
-        url, method="GET", headers={"Accept": "application/json"}
-    )
+    req = urllib.request.Request(url, method="GET", headers={"Accept": "application/json"})
     with transport.urlopen(req, timeout=12) as resp:
         return json.loads(resp.read().decode("utf-8"))
 

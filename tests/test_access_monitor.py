@@ -52,8 +52,7 @@ def test_possible_exfil_on_file_write(monitor_events):
     with open(path, "w") as f:  # write right after .use()
         f.write("x")
     assert any(
-        e["kind"] == "secret.possible_exfil" and e["method"] == "file_write"
-        for e in monitor_events
+        e["kind"] == "secret.possible_exfil" and e["method"] == "file_write" for e in monitor_events
     )
 
 
@@ -71,8 +70,7 @@ def test_inmemory_iteration_detected(monitor_events):
     stolen = "".join(ch for ch in val)
     assert stolen == "sk-super-secret"  # real value still returned — nothing breaks
     assert any(
-        e["kind"] == "secret.possible_exfil" and e["method"] == "iteration"
-        for e in monitor_events
+        e["kind"] == "secret.possible_exfil" and e["method"] == "iteration" for e in monitor_events
     )
 
 

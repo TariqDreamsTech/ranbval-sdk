@@ -40,10 +40,16 @@ def _mock_pull(monkeypatch, payload):
 
 
 def test_fetch_env_set_maps_names(monkeypatch):
-    _mock_pull(monkeypatch, {"project": "demo", "envs": [
-        {"name": "PUBLIC_DB_URL", "value": "postgres://x", "kind": "public"},
-        {"name": "SECRET_OPENAI", "value": "ranbval.aa.bb.ahsan", "kind": "secret"},
-    ]})
+    _mock_pull(
+        monkeypatch,
+        {
+            "project": "demo",
+            "envs": [
+                {"name": "PUBLIC_DB_URL", "value": "postgres://x", "kind": "public"},
+                {"name": "SECRET_OPENAI", "value": "ranbval.aa.bb.ahsan", "kind": "secret"},
+            ],
+        },
+    )
     envs = fetch_env_set(project_secret="ranbval-proj-x")
     assert envs == {"PUBLIC_DB_URL": "postgres://x", "SECRET_OPENAI": "ranbval.aa.bb.ahsan"}
 
@@ -96,10 +102,16 @@ def test_load_ranbval_remote_dev_key(monkeypatch, tmp_path):
 
 def test_load_ranbval_remote_populates_env(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)  # no local .ranbval
-    _mock_pull(monkeypatch, {"project": "demo", "envs": [
-        {"name": "PUBLIC_APP", "value": "demo", "kind": "public"},
-        {"name": "SECRET_KEY", "value": "ranbval.aa.bb.ahsan", "kind": "secret"},
-    ]})
+    _mock_pull(
+        monkeypatch,
+        {
+            "project": "demo",
+            "envs": [
+                {"name": "PUBLIC_APP", "value": "demo", "kind": "public"},
+                {"name": "SECRET_KEY", "value": "ranbval.aa.bb.ahsan", "kind": "secret"},
+            ],
+        },
+    )
     monkeypatch.delenv("RANBVAL_PROJECT_SECRET", raising=False)
     ok = load_ranbval(remote=True, project_secret="ranbval-proj-x")
     assert ok is True

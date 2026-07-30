@@ -94,7 +94,12 @@ def _on_use(label: str, caller: str) -> None:
     context = classify_context(caller)
     if context != "app":
         _dispatch(
-            {"kind": "secret.suspicious_access", "label": label, "caller": caller, "context": context}
+            {
+                "kind": "secret.suspicious_access",
+                "label": label,
+                "caller": caller,
+                "context": context,
+            }
         )
 
 

@@ -4,6 +4,77 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [4.1.0] - 2026-07-28
+
+### Added
+
+- **`RANBVAL_ALLOWED_PATHS` — confine a config to a subtree.** `.ranbval` is found by walking
+  *upward* from the working directory, so a config placed high in a tree is picked up by every
+  project beneath it, including ones that should never see those credentials. This key confines
+  it:
+
+  ```bash
+  # .ranbval
+  RANBVAL_ALLOWED_PATHS=.              # this directory and everything under it
+  RANBVAL_ALLOWED_PATHS=./content      # one subtree
+  RANBVAL_ALLOWED_PATHS=./api:./jobs   # two, nothing else
+  ```
+
+  **Subdirectories inherit.** The test is "is the working directory at or below an allowed
+  directory", so a folder created later under an allowed path works with no config change.
+  Relative entries resolve against the directory holding `.ranbval`, so the file stays portable
+  across machines and checkouts; absolute paths are accepted too. An absent or empty value means
+  no restriction — a typo must not brick a config.
+
+  Path components are compared, not string prefixes, so a sibling such as `content-backup` does
+  not match an allowed `content`.
+
+  *Honest limit — this is scoping, not a security boundary.* Anyone holding the project secret can
+  run from an allowed path or copy the files into one. It stops the wrong project picking up a
+  parent's credentials by accident, which is the mistake that actually happens in a monorepo. It
+  does not stop someone who wants the values; for that, the repo allowlist (server-side,
+  unbypassable) or a `PROXY_` secret is the mechanism.
+
+- **Pre-commit hooks, at both commit and push.** `.pre-commit-config.yaml` splits the work by
+  cost, because a commit hook that takes ten seconds gets bypassed with `--no-verify` — the exact
+  failure mode this project studies:
+
+  | stage | hooks |
+  |---|---|
+  | `pre-commit` | ruff (lint + format), gitleaks, bandit, `ranbval check`, whitespace/EOL/YAML/TOML/JSON, merge-conflict and case-conflict checks, large-file guard, `detect-private-key` |
+  | `pre-push` | mypy, the full test suite, CHANGELOG-entry gate, and a real `build` + `twine check` |
+
+  Install both stages (the second is *not* installed by `pre-commit install` alone):
+
+  ```bash
+  pre-commit install --hook-type pre-commit --hook-type pre-push
+  ```
+
+  The build hook builds into a temporary directory rather than `./dist`, deliberately: a stale
+  wheel left in `dist/` is a live hazard, since `twine upload dist/*` publishes every version
+  sitting there and a published version can never be replaced.
+
+### Fixed
+
+- **The transport would open any URL scheme.** `urlopen` honours `file:`, `ftp:` and registered
+  custom schemes, and the host comes from configuration (`RANBVAL_HOST`, `host_url=`) — so a host
+  pointed at `file:///etc/passwd` made the SDK read it. The scheme is now restricted to `http`
+  and `https`, with anything else raising `RanbvalConfigError` (`disallowed_url_scheme`). Found by
+  bandit (B310) while wiring the hooks, and fixed rather than suppressed.
+
+- **`cli/check.py` reused a name bound by an earlier `except ... as e`**, which Python deletes at
+  block exit. Not a runtime fault, but exactly the shadowing that becomes one under edit.
+
+### Changed
+
+- **The codebase now passes ruff, ruff-format, mypy and bandit cleanly.** All four were configured
+  in `pyproject.toml` but never enforced anywhere; enabling them surfaced 12 lint errors, 21
+  unformatted files and 15 type errors, all now resolved. Notifier and gate slots that were typed
+  `object` and then called are typed as the callables they are; `__reduce_ex__` overrides match
+  the signature they override.
+
+---
+
 ## [4.0.1] - 2026-07-28
 
 ### Fixed

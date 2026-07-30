@@ -21,6 +21,7 @@ def _isolate_ranbval_env(monkeypatch):
             monkeypatch.delenv(name, raising=False)
     yield
 
+
 def _write_private(path, text):
     """Write a fixture file the way `ranbval init` does — 0600, owner only.
 
@@ -46,7 +47,12 @@ SECRET_OPENAI_API_KEY=ranbval.4ii0a0.BLOB.stripe
 def prefixed_env(tmp_path, monkeypatch):
     _write_private(tmp_path / ".ranbval", _PREFIXED)
     monkeypatch.chdir(tmp_path)
-    for key in ("PUBLIC_DATABASE_URL", "PUBLIC_CORS_ORIGINS", "PUBLIC_PORT", "SECRET_OPENAI_API_KEY"):
+    for key in (
+        "PUBLIC_DATABASE_URL",
+        "PUBLIC_CORS_ORIGINS",
+        "PUBLIC_PORT",
+        "SECRET_OPENAI_API_KEY",
+    ):
         monkeypatch.delenv(key, raising=False)
     assert load_ranbval() is True
 

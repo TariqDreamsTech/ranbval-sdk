@@ -34,7 +34,7 @@ def guarded():
         pytest.param(lambda v: v, id="the-value-itself"),
         pytest.param(lambda v: f"{v}", id="f-string"),
         pytest.param(lambda v: "Bearer " + v, id="concatenation"),
-        pytest.param(lambda v: "%s" % v, id="percent-format"),
+        pytest.param(lambda v: "%s" % v, id="percent-format"),  # noqa: UP031 — the spelling under test
         pytest.param(lambda v: "{}".format(v), id="str-format"),  # noqa: UP032
         pytest.param(lambda v: str({"key": f"{v}"}), id="nested-in-a-dict"),
         pytest.param(lambda v: f"prefix {v} suffix", id="embedded-in-a-sentence"),

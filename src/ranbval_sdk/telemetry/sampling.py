@@ -34,9 +34,7 @@ class AdaptiveSampler:
     def __init__(self, flush_interval_sec: float = _FLUSH_INTERVAL_SEC) -> None:
         self._interval = flush_interval_sec
         self._lock = threading.Lock()
-        self._seen: set[str] = (
-            set()
-        )  # credentials sent at least once this run (first-seen = 100%)
+        self._seen: set[str] = set()  # credentials sent at least once this run (first-seen = 100%)
         self._pending: dict[str, int] = {}  # unsent repeat counts per credential
         self._flusher_started = False
 

@@ -22,6 +22,7 @@ _cipher.assert_repo_allowed_for_decrypt = lambda *args, **kwargs: None
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _build_token(plaintext: str, project_secret: str, expiry_ts: int | None = None) -> str:
     """Build a vault token; optionally embed TTL."""
     import base64
@@ -41,6 +42,7 @@ def _build_token(plaintext: str, project_secret: str, expiry_ts: int | None = No
 
 
 # ── mlock tests ───────────────────────────────────────────────────────────────
+
 
 class TestMlock(unittest.TestCase):
     def test_mlock_does_not_crash(self):
@@ -69,6 +71,7 @@ class TestMlock(unittest.TestCase):
 
 # ── Audit log tests ───────────────────────────────────────────────────────────
 
+
 class TestAuditLog(unittest.TestCase):
     def setUp(self):
         clear_audit_log()
@@ -93,7 +96,7 @@ class TestAuditLog(unittest.TestCase):
         s = SecretString("caller-test", label="CALLER_KEY")
         s.use()
         entry = get_audit_log()[0]
-        self.assertIn(":", entry["caller"])   # "file.py:42" format
+        self.assertIn(":", entry["caller"])  # "file.py:42" format
 
     def test_audit_never_logs_secret_value(self):
         s = SecretString("super-secret-value", label="SAFE_KEY")
@@ -136,6 +139,7 @@ class TestAuditLog(unittest.TestCase):
 
 # ── Token TTL tests ───────────────────────────────────────────────────────────
 
+
 class TestTokenTTL(unittest.TestCase):
     SECRET = "ranbval-proj-ttl-test-secret-1234"
 
@@ -147,14 +151,14 @@ class TestTokenTTL(unittest.TestCase):
 
     def test_valid_token_future_ttl_works(self):
         """Token with future expiry must decrypt successfully."""
-        future = int(time.time()) + 86400   # 24 hours from now
+        future = int(time.time()) + 86400  # 24 hours from now
         token = _build_token("sk-ttl-valid", self.SECRET, expiry_ts=future)
         result = safe_decrypt(token, self.SECRET)
         self.assertEqual(result.use(), "sk-ttl-valid")
 
     def test_expired_token_raises(self):
         """Token with past expiry must raise ValueError."""
-        past = int(time.time()) - 1   # 1 second ago
+        past = int(time.time()) - 1  # 1 second ago
         token = _build_token("sk-expired", self.SECRET, expiry_ts=past)
         with self.assertRaises(ValueError, msg="expired"):
             safe_decrypt(token, self.SECRET)

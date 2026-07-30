@@ -29,6 +29,7 @@ from ranbval_sdk.config import (
     Secret,
     SecretConfig,
     SecretProvider,
+    Use,
     Vault,
     env,
     find_ranbval_directory,
@@ -47,7 +48,6 @@ from ranbval_sdk.config import (
     reveal_scope,
     secrets,
     use,
-    Use,
 )
 from ranbval_sdk.crypto import (
     SecretString,
@@ -85,7 +85,7 @@ from ranbval_sdk.telemetry import (
     uninstall_access_monitor,
 )
 
-__version__ = "4.0.1"
+__version__ = "4.1.0"
 
 __all__ = [
     # Config

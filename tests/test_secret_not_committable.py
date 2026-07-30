@@ -24,7 +24,6 @@ def _write_private(path, text):
     path.chmod(0o600)
 
 
-
 def _git(cwd, *args):
     subprocess.run(["git", *args], cwd=str(cwd), check=True, capture_output=True)
 
