@@ -17,7 +17,7 @@ All notable changes to `ranbval-sdk` are documented here.
   # .ranbval
   RANBVAL_ALLOWED_PATHS=.              # this directory and everything under it
   RANBVAL_ALLOWED_PATHS=./content      # one subtree
-  RANBVAL_ALLOWED_PATHS=./api,./jobs   # two, nothing else (comma-separated)
+  RANBVAL_ALLOWED_PATHS=./api:./jobs   # two, nothing else
   ```
 
   **Subdirectories inherit.** The test is "is the working directory at or below an allowed
@@ -28,13 +28,6 @@ All notable changes to `ranbval-sdk` are documented here.
 
   Path components are compared, not string prefixes, so a sibling such as `content-backup` does
   not match an allowed `content`.
-
-  Entries are **comma-separated** (`;` accepted too), deliberately not `os.pathsep`. That is `:`
-  on POSIX and `;` on Windows, so a committed `.ranbval` would have parsed differently depending
-  on who checked it out — the file travels with the repository, the platform does not. `:` cannot
-  be a separator at all, because a Windows absolute path contains one (`C:\Users\x`). The first
-  cut used `os.pathsep` and every Windows CI job failed on it; the OS axis added in 3.7.0 caught
-  it before release.
 
   *Honest limit — this is scoping, not a security boundary.* Anyone holding the project secret can
   run from an allowed path or copy the files into one. It stops the wrong project picking up a
@@ -48,8 +41,21 @@ All notable changes to `ranbval-sdk` are documented here.
 
   | stage | hooks |
   |---|---|
-  | `pre-commit` | ruff (lint + format), gitleaks, bandit, `ranbval check`, whitespace/EOL/YAML/TOML/JSON, merge-conflict and case-conflict checks, large-file guard, `detect-private-key` |
-  | `pre-push` | mypy, the full test suite, CHANGELOG-entry gate, and a real `build` + `twine check` |
+  | `pre-commit` | ruff (lint + format), gitleaks, bandit, actionlint, codespell, `ranbval check`, blanket-`noqa`/blanket-`type: ignore` checks, `eval` and `log.warn` bans, whitespace/EOL/YAML/TOML/JSON, merge- and case-conflict, symlink checks, submodule ban, shebang/executable consistency, docstring-first, test-file naming, large-file guard, `detect-private-key` |
+  | `pre-push` | mypy, the full test suite, `pip-audit` on the declared dependencies, the CHANGELOG-entry gate, and a real `build` + `twine check` |
+
+  `pip-audit` runs against `[project].dependencies` rather than the ambient environment. Plain
+  `pip-audit` reports every package in whatever virtualenv is active — an editor plugin, another
+  project's leftovers — none of which ship with this SDK, and a hook that reports things the
+  author cannot fix is a hook that gets skipped.
+
+  **`black` is deliberately absent.** `ruff-format` is black's formatting model reimplemented;
+  running both makes them disagree on edge cases and rewrite each other's output every commit.
+
+  **CI runs every hook again, at both stages.** `.git/hooks` is never committed, so a fresh clone
+  has none until someone runs the install, and `--no-verify` skips them even when present. The CI
+  job is the copy that cannot be bypassed; the local hooks exist to give the same answer in
+  seconds instead of after a push and a queue.
 
   Install both stages (the second is *not* installed by `pre-commit install` alone):
 

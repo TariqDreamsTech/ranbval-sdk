@@ -12,33 +12,59 @@ Thank you for your interest in contributing. This document covers how to set up 
 git clone https://github.com/TariqDreamsTech/ranbval-sdk.git
 cd ranbval-sdk
 poetry install
+
+# Required — install BOTH hook stages. `pre-commit install` alone installs only
+# the commit stage, so the push-time gates (tests, mypy, build) would never run.
+pre-commit install --hook-type pre-commit --hook-type pre-push
 ```
+
+> **`.git/hooks` is not committed.** Every clone starts with no hooks at all, so the line above is
+> not optional — a fresh checkout has nothing installed until you run it. CI runs the same hooks
+> (see below), so a missed install shows up as a red build rather than a bad merge.
 
 Create a `.ranbval.local` file in the project root with your test credentials:
 
 ```bash
 RANBVAL_PROJECT_SECRET=your_project_secret
+chmod 600 .ranbval.local     # the loader warns otherwise: it is the key to every token
 ```
 
 ---
 
-## Running Tests
+## The gates
+
+Hooks are split by cost. A commit hook that takes ten seconds gets bypassed with `--no-verify`,
+which is exactly the failure this project studies — so the slow checks run at push instead.
+
+| stage | checks |
+|---|---|
+| **pre-commit** | ruff (lint + format), gitleaks, bandit, `ranbval check`, whitespace/EOL, YAML/TOML/JSON, merge- and case-conflict, large files, `detect-private-key` |
+| **pre-push** | mypy, the full test suite, the CHANGELOG-entry gate, and a real `build` + `twine check` |
+
+Run them by hand without committing:
 
 ```bash
-# Run all tests (discovered from tests/)
-poetry run pytest
-
-# Run a specific test file
-poetry run pytest tests/test_security_features.py -v
-
-# Lint and format checks
-poetry run ruff check src
-poetry run black --check src
+pre-commit run --all-files                        # commit-stage hooks
+pre-commit run --all-files --hook-stage pre-push  # push-stage hooks
 ```
 
-All tests, `ruff`, and `black` must pass before submitting a pull request. Repo-allowlist
-enforcement and usage telemetry are always on and server-controlled — there is no client
-flag to disable them.
+Or the individual tools:
+
+```bash
+poetry run pytest                 # full suite
+poetry run pytest tests/test_security_features.py -v
+poetry run ruff check .           # lint
+poetry run ruff format --check .  # formatting (ruff-format; black is no longer used)
+poetry run mypy                   # types
+```
+
+**CI runs every hook again**, at both stages, on every push and pull request. That copy is the one
+that cannot be skipped: local hooks can be uninstalled, never installed, or bypassed with
+`--no-verify`. The local ones exist to give you the same answer in seconds rather than after a
+push and a CI queue.
+
+Repo-allowlist enforcement and usage telemetry are server-controlled — there is no client flag to
+disable them.
 
 ---
 
