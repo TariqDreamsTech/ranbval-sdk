@@ -143,8 +143,26 @@ def _layer_paths(directory: Path, mode: str) -> list[Path]:
 _TRUTHY = {"1", "true", "yes", "on"}
 
 
+#: Conventional suffixes for a committed template. A template's ``*_PROJECT_SECRET=`` line holds
+#: a placeholder for the reader to replace, not a key — so treating it as a real secret file makes
+#: both the commit-safety and file-mode guards fire on a file that is *meant* to be committed and
+#: world-readable. Accepted trade: a real secret pasted into a ``.example`` is not caught here.
+#: The gitleaks hook and the repository's own review are the layers for that.
+_TEMPLATE_SUFFIXES = (".example", ".sample", ".template", ".dist")
+
+
+def _is_template(path: Path) -> bool:
+    """True for a conventional template filename (``.ranbval.example`` and friends)."""
+    return path.name.lower().endswith(_TEMPLATE_SUFFIXES)
+
+
 def _file_holds_project_secret(path: Path) -> bool:
-    """True if the file has a ``*_PROJECT_SECRET=`` line — the root key that unseals everything."""
+    """True if the file has a ``*_PROJECT_SECRET=`` line — the root key that unseals everything.
+
+    Templates are excluded: their value is a placeholder, and the file exists to be committed.
+    """
+    if _is_template(path):
+        return False
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
@@ -169,7 +187,8 @@ def _git_would_commit(path: Path) -> bool:
     import subprocess  # noqa: PLC0415 — only needed on this guard path
 
     try:
-        result = subprocess.run(  # nosec B603, B607 — fixed argv, no shell
+        # Fixed argv, no shell, no user-controlled arguments.
+        result = subprocess.run(  # nosec B603,B607
             ["git", "check-ignore", "-q", str(path)],
             cwd=str(path.parent),
             capture_output=True,
@@ -258,6 +277,74 @@ def _check_secret_file_modes(paths: list[Path]) -> None:
     if os.environ.get("RANBVAL_STRICT_FILE_MODE", "").strip().lower() in _TRUTHY:
         raise RanbvalConfigError(message, code="secret_file_world_readable")
     warnings.warn(f"Ranbval: {message}", stacklevel=3)
+
+
+#: Key in ``.ranbval`` listing the directories this configuration may be loaded from.
+_ALLOWED_PATHS_KEY = "RANBVAL_ALLOWED_PATHS"
+
+#: Separators accepted between entries. Deliberately **not** ``os.pathsep``: that is ``:`` on
+#: POSIX and ``;`` on Windows, so the same committed ``.ranbval`` would parse differently
+#: depending on who checked it out — the file travels with the repository, the platform does not.
+#: ``:`` is excluded outright because a Windows absolute path contains one (``C:\\Users\\x``),
+#: so splitting on it would tear drive letters off. Comma is the documented form.
+_PATH_SEPARATORS = ",;"
+
+
+def _resolve_allowed_paths(raw: str, config_root: Path) -> list[Path]:
+    """Parse the allowlist. Relative entries resolve against the directory holding ``.ranbval``,
+    so ``.`` means "here and below" and the file stays portable across machines and checkouts."""
+    out: list[Path] = []
+    normalised = raw
+    for sep in _PATH_SEPARATORS[1:]:
+        normalised = normalised.replace(sep, _PATH_SEPARATORS[0])
+    for entry in normalised.split(_PATH_SEPARATORS[0]):
+        entry = entry.strip()
+        if not entry:
+            continue
+        p = Path(entry).expanduser()
+        out.append((p if p.is_absolute() else config_root / p).resolve())
+    return out
+
+
+def _assert_path_allowed(values: dict[str, str], config_root: Path | None) -> None:
+    """Refuse to load when the working directory is outside every allowed path.
+
+    ``.ranbval`` is discovered by walking *upward*, so a config placed high in a tree is picked up
+    by every project beneath it — including ones that should never see those credentials. This key
+    confines it::
+
+        RANBVAL_ALLOWED_PATHS=.            # this directory and everything under it
+        RANBVAL_ALLOWED_PATHS=./api:./jobs # two subtrees, nothing else
+
+    **Subdirectories inherit.** The check is "is the working directory at or below an allowed
+    directory", so any folder created under an allowed path is allowed with no config change.
+
+    Honest limit — this is **scoping, not a security boundary.** Anyone holding the project secret
+    can copy the files into an allowed path or run from one. It stops the wrong project picking up
+    a parent's credentials by accident, which is the mistake that actually happens in a monorepo;
+    it does not stop someone who wants the values. For that, see the repo allowlist (server-side,
+    unbypassable) or a ``PROXY_`` secret.
+    """
+    raw = values.get(_ALLOWED_PATHS_KEY, "").strip()
+    if not raw or config_root is None:
+        return
+
+    allowed = _resolve_allowed_paths(raw, config_root)
+    if not allowed:
+        return
+
+    cwd = Path(os.getcwd()).resolve()
+    if any(cwd == a or cwd.is_relative_to(a) for a in allowed):
+        return
+
+    listed = ", ".join(str(a) for a in allowed)
+    raise RanbvalConfigError(
+        f"This .ranbval may only be loaded from {listed} (and below), but the working directory "
+        f"is {cwd}. A config found by walking upward would otherwise be used by every project "
+        f"beneath it. Move the work under an allowed path, or widen "
+        f"{_ALLOWED_PATHS_KEY} in {config_root / '.ranbval'}.",
+        code="path_not_allowed",
+    )
 
 
 def find_ranbval_directory(start: Path | str | None = None) -> Path | None:
@@ -479,6 +566,9 @@ def load_ranbval(
 
     # Every variable must declare its class via a name prefix (PUBLIC_/SECRET_/PROXY_); reject
     # anything unclassified, then warn on values that contradict their prefix.
+    # Confine before anything else uses the values: a config found by walking upward would
+    # otherwise be picked up by every project beneath it.
+    _assert_path_allowed(merged, config_root)
     _validate_classification(merged)
     _warn_value_mismatches(merged)
 

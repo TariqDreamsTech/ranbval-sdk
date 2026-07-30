@@ -1,0 +1,179 @@
+# Pre-commit for ranbval-sdk.
+#
+# Two stages, split by how long each check takes — a commit hook that takes ten seconds gets
+# bypassed with --no-verify, which is the outcome this whole project exists to avoid:
+#
+#   pre-commit  fast checks on the staged files (formatting, lint, leaked-secret scan)
+#   pre-push    the whole suite, type checking, dependency audit, and a real package build
+#
+# Install both stages (the second is NOT installed by `pre-commit install` alone):
+#
+#   pre-commit install --hook-type pre-commit --hook-type pre-push
+#
+# Run everything against the whole tree once, without committing:
+#
+#   pre-commit run --all-files
+#   pre-commit run --all-files --hook-stage pre-push
+#
+# CI runs both of the above on every push and PR. .git/hooks is never committed, so a fresh clone
+# has no hooks until someone installs them, and --no-verify skips them even when present — the CI
+# copy is the one that cannot be bypassed.
+#
+# On black: not used, and not an oversight. `ruff-format` below is black's formatting model
+# reimplemented; running both makes them disagree on edge cases and rewrite each other's output
+# on every commit. One formatter, chosen deliberately.
+
+default_install_hook_types: [pre-commit, pre-push]
+default_language_version:
+  python: python3
+
+repos:
+  # ── File hygiene ───────────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+        args: [--maxkb=512]
+      - id: check-symlinks
+      - id: destroyed-symlinks
+      - id: forbid-new-submodules
+      - id: check-shebang-scripts-are-executable
+      - id: debug-statements
+      - id: check-docstring-first
+      - id: name-tests-test
+        args: [--pytest-test-first]
+
+      # A committed private key in a secret manager's own repository would be the most
+      # quotable failure available, so it is checked on every commit.
+      - id: detect-private-key
+
+  # ── Lint and format ────────────────────────────────────────────────────────
+  # Configured in pyproject.toml ([tool.ruff]) so the hook and a local run agree. Covers in one
+  # pass what flake8, isort, pyupgrade and pep8-naming would each contribute separately.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      # `ruff-check` since 0.13; the bare `ruff` id still works but is a deprecated alias and
+      # will eventually stop resolving.
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  # A bare `# noqa` or `# type: ignore` silences every rule, including ones added later.
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      - id: python-check-blanket-noqa
+      - id: python-check-blanket-type-ignore
+      - id: python-no-eval
+      - id: python-no-log-warn
+
+  # ── Spelling ───────────────────────────────────────────────────────────────
+  # This repository is unusually prose-heavy — README, CHANGELOG and the long docstrings are the
+  # product's honesty surface, so typos in them are worth catching.
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.3
+    hooks:
+      - id: codespell
+        args: ["--skip=poetry.lock,*.lock,dist,.git"]
+
+  # ── Leaked credentials ─────────────────────────────────────────────────────
+  # Scans the diff, not just the working tree, so a secret committed earlier in a branch is
+  # caught before it is pushed. Both stages: catching it at commit is better, catching it at
+  # push is the last point before it leaves the machine.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+        stages: [pre-commit, pre-push]
+
+  # ── Python security lint ───────────────────────────────────────────────────
+  # Source only. Tests deliberately construct weak/fake secrets and exercise unsafe paths, so
+  # scanning them reports the very thing each test exists to assert.
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.4
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml, -q, -ll]  # gate on medium+; see [tool.bandit] for why
+        additional_dependencies: ["bandit[toml]"]
+        files: ^src/
+        exclude: ^tests/
+
+  # ── CI workflow correctness ────────────────────────────────────────────────
+  # A broken workflow only shows up after a push, when the run silently does not start.
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
+  # ── Ranbval's own linter ───────────────────────────────────────────────────
+  # Dogfooding: unclassified keys, competing .env files, and a world-readable root-key file all
+  # fail here. If our own gate is not good enough for our own repository, it is not good enough
+  # to ship.
+  - repo: local
+    hooks:
+      - id: ranbval-check
+        name: ranbval check (config classification + file modes)
+        entry: python3 -m ranbval_sdk.cli check
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+  # ── Types, tests, supply chain, packaging: pre-push ────────────────────────
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (src, settings from pyproject)
+        entry: python3 -m mypy
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      - id: pytest
+        name: pytest (full suite)
+        entry: python3 -m pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      # Known CVEs in what this package actually declares — not the ambient environment, which
+      # reports the developer's unrelated installs and trains everyone to ignore the hook.
+      - id: pip-audit
+        name: pip-audit (declared dependencies)
+        entry: python3 scripts/audit_deps.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      # The version in pyproject.toml must have a CHANGELOG entry. Same gate CI applies; failing
+      # here means finding out in seconds rather than after a push and a CI queue.
+      - id: changelog-entry
+        name: version has a CHANGELOG entry
+        entry: python3 scripts/check_changelog.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      # The built artifact is what users install; twine check catches metadata that renders
+      # broken on PyPI, which cannot be fixed after upload.
+      - id: build-and-check
+        name: build sdist+wheel and twine check
+        entry: python3 scripts/build_check.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

@@ -49,7 +49,7 @@ class Secret:
     def __get__(self, obj: Any, owner: type | None = None) -> Any:
         holder = owner if owner is not None else type(obj)
         _ensure_env_loaded()
-        store = holder._secret_cache
+        store = holder._secret_cache  # type: ignore[attr-defined]  # set by SecretConfig.__init_subclass__
         if self.env_var not in store:
             store[self.env_var] = _resolve(self.env_var, reveal=False)
         value = store[self.env_var]

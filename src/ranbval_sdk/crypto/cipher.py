@@ -91,8 +91,7 @@ def _parse_token(token: str) -> _ParsedToken:
     parts = token.split(".")
     if parts[0] != _TOKEN_MARKER:
         raise RanbvalDecryptError(
-            "Invalid token: not a Ranbval vault token "
-            "(expected it to start with 'ranbval.').",
+            "Invalid token: not a Ranbval vault token (expected it to start with 'ranbval.').",
             code="invalid_token_format",
         )
     if len(parts) == 4:  # ranbval.<salt>.<blob>.<label>
@@ -128,9 +127,7 @@ def _strip_expiry_and_check_ttl(plaintext: str) -> str:
     return body
 
 
-def safe_decrypt(
-    copy_token: str, project_secret: str, *, label: str = "secret"
-) -> SecretString:
+def safe_decrypt(copy_token: str, project_secret: str, *, label: str = "secret") -> SecretString:
     """
     Decrypt a Ranbval vault token using your project secret.
 

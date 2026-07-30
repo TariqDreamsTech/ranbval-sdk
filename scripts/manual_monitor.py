@@ -13,6 +13,7 @@ os.environ["OPENAI_API_KEY"] = (
 os.environ["RANBVAL_VAULT_SECRET"] = "hello"
 
 import openai
+
 from ranbval_sdk import secure_client
 
 

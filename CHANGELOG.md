@@ -4,6 +4,106 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [4.1.0] - 2026-07-28
+
+### Added
+
+- **`RANBVAL_ALLOWED_PATHS` — confine a config to a subtree.** `.ranbval` is found by walking
+  *upward* from the working directory, so a config placed high in a tree is picked up by every
+  project beneath it, including ones that should never see those credentials. This key confines
+  it:
+
+  ```bash
+  # .ranbval
+  RANBVAL_ALLOWED_PATHS=.              # this directory and everything under it
+  RANBVAL_ALLOWED_PATHS=./content      # one subtree
+  RANBVAL_ALLOWED_PATHS=./api:./jobs   # two, nothing else
+  ```
+
+  **Subdirectories inherit.** The test is "is the working directory at or below an allowed
+  directory", so a folder created later under an allowed path works with no config change.
+  Relative entries resolve against the directory holding `.ranbval`, so the file stays portable
+  across machines and checkouts; absolute paths are accepted too. An absent or empty value means
+  no restriction — a typo must not brick a config.
+
+  Path components are compared, not string prefixes, so a sibling such as `content-backup` does
+  not match an allowed `content`.
+
+  *Honest limit — this is scoping, not a security boundary.* Anyone holding the project secret can
+  run from an allowed path or copy the files into one. It stops the wrong project picking up a
+  parent's credentials by accident, which is the mistake that actually happens in a monorepo. It
+  does not stop someone who wants the values; for that, the repo allowlist (server-side,
+  unbypassable) or a `PROXY_` secret is the mechanism.
+
+- **Pre-commit hooks, at both commit and push.** `.pre-commit-config.yaml` splits the work by
+  cost, because a commit hook that takes ten seconds gets bypassed with `--no-verify` — the exact
+  failure mode this project studies:
+
+  | stage | hooks |
+  |---|---|
+  | `pre-commit` | ruff (lint + format), gitleaks, bandit, actionlint, codespell, `ranbval check`, blanket-`noqa`/blanket-`type: ignore` checks, `eval` and `log.warn` bans, whitespace/EOL/YAML/TOML/JSON, merge- and case-conflict, symlink checks, submodule ban, shebang/executable consistency, docstring-first, test-file naming, large-file guard, `detect-private-key` |
+  | `pre-push` | mypy, the full test suite, `pip-audit` on the declared dependencies, the CHANGELOG-entry gate, and a real `build` + `twine check` |
+
+  `pip-audit` runs against `[project].dependencies` rather than the ambient environment. Plain
+  `pip-audit` reports every package in whatever virtualenv is active — an editor plugin, another
+  project's leftovers — none of which ship with this SDK, and a hook that reports things the
+  author cannot fix is a hook that gets skipped.
+
+  **`black` is deliberately absent.** `ruff-format` is black's formatting model reimplemented;
+  running both makes them disagree on edge cases and rewrite each other's output every commit.
+
+  Hook revisions and the tools CI installs both track latest rather than pinned versions. The
+  first CI run of these hooks failed because the local hooks use `language: system` — they run
+  whatever the developer has installed — while CI installed a newer `mypy`, so the suite was green
+  locally and red in CI. Keep your own tools current (`pip install -U pytest mypy pip-audit build
+  twine pre-commit`) or the split returns.
+
+- **`httpx` is now a declared optional dependency** (`pip install ranbval-sdk[httpx]`).
+  `integrations.httpx_transport` imports it at module level, but nothing declared it, so type
+  checking could not resolve it and a user had no way to know what that integration required.
+
+  **CI runs every hook again, at both stages.** `.git/hooks` is never committed, so a fresh clone
+  has none until someone runs the install, and `--no-verify` skips them even when present. The CI
+  job is the copy that cannot be bypassed; the local hooks exist to give the same answer in
+  seconds instead of after a push and a queue.
+
+  Install both stages (the second is *not* installed by `pre-commit install` alone):
+
+  ```bash
+  pre-commit install --hook-type pre-commit --hook-type pre-push
+  ```
+
+  The build hook builds into a temporary directory rather than `./dist`, deliberately: a stale
+  wheel left in `dist/` is a live hazard, since `twine upload dist/*` publishes every version
+  sitting there and a published version can never be replaced.
+
+### Fixed
+
+- **The transport would open any URL scheme.** `urlopen` honours `file:`, `ftp:` and registered
+  custom schemes, and the host comes from configuration (`RANBVAL_HOST`, `host_url=`) — so a host
+  pointed at `file:///etc/passwd` made the SDK read it. The scheme is now restricted to `http`
+  and `https`, with anything else raising `RanbvalConfigError` (`disallowed_url_scheme`). Found by
+  bandit (B310) while wiring the hooks, and fixed rather than suppressed.
+
+- **`cli/check.py` reused a name bound by an earlier `except ... as e`**, which Python deletes at
+  block exit. Not a runtime fault, but exactly the shadowing that becomes one under edit.
+
+- **`scripts/audit_deps.py` reported a missing tool as a vulnerability finding.** When `pip-audit`
+  was not installed it printed *"vulnerable dependencies among: …"* — a red result naming packages
+  that were never audited. "The tool is absent" and "the dependencies are vulnerable" are different
+  facts, and a security tool that conflates them is the failure this project is about. It now says
+  which one it is.
+
+### Changed
+
+- **The codebase now passes ruff, ruff-format, mypy and bandit cleanly.** All four were configured
+  in `pyproject.toml` but never enforced anywhere; enabling them surfaced 12 lint errors, 21
+  unformatted files and 15 type errors, all now resolved. Notifier and gate slots that were typed
+  `object` and then called are typed as the callables they are; `__reduce_ex__` overrides match
+  the signature they override.
+
+---
+
 ## [4.0.1] - 2026-07-28
 
 ### Fixed

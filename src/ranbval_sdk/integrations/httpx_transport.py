@@ -83,9 +83,7 @@ class RanbvalProxyTransport(httpx.BaseTransport):
             except ValueError:
                 body = text
 
-        headers = {
-            k: v for k, v in request.headers.items() if k.lower() not in _DROP_HEADERS
-        }
+        headers = {k: v for k, v in request.headers.items() if k.lower() not in _DROP_HEADERS}
 
         result = proxy_request(
             token=self._token,
@@ -98,7 +96,7 @@ class RanbvalProxyTransport(httpx.BaseTransport):
         )
 
         payload = result.get("body")
-        if isinstance(payload, (dict, list)):
+        if isinstance(payload, dict | list):
             content = json.dumps(payload).encode("utf-8")
             content_type = "application/json"
         else:

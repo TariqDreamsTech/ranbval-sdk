@@ -18,13 +18,13 @@ with :func:`set_enforcement`, which leaves every later line unguarded for the ap
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 # ── Reveal notifier (set by ranbval_sdk.telemetry.monitor) ─────────────────────
-_reveal_notifier: object = None
+_reveal_notifier: Callable[[str], None] | None = None
 
 
-def set_reveal_notifier(fn: object) -> None:
+def set_reveal_notifier(fn: Callable[[str], None] | None) -> None:
     """Register (or clear with ``None``) a callback ``fn(method)`` for reveal-side signals."""
     global _reveal_notifier
     _reveal_notifier = fn
@@ -118,10 +118,10 @@ _EXTRACTION_MESSAGE = {
         "only a PROXY_ secret keeps the value off the client entirely. (set_enforcement(False) to disable.)"
     ),
     "truncate": (
-        "Ranbval: truncating a secret in a format spec (f\"{key:.8}\") is blocked. The result is a "
+        'Ranbval: truncating a secret in a format spec (f"{key:.8}") is blocked. The result is a '
         "prefix rather than the value, so the stdout guard cannot recognise it and it would print "
         "straight past every check — while no client library truncates a credential to build a "
-        "request. Format it without a precision (f\"Bearer {key}\") or pass key.use() directly."
+        'request. Format it without a precision (f"Bearer {key}") or pass key.use() directly.'
     ),
     "buffer_read": (
         "Ranbval: reading a secret's internal buffer (_buf/_pad) is blocked — no legitimate "

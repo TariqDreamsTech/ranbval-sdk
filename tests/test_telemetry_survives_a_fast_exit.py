@@ -71,7 +71,7 @@ def test_atexit_joins_in_flight_emits():
         import ranbval_sdk.telemetry.sampling  # noqa: F401
         """
     )
-    out = subprocess.run(
-        [sys.executable, "-c", script], capture_output=True, text=True, timeout=30
+    out = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=30)
+    assert "LANDED" in out.stdout, (
+        f"the emit was dropped on exit: {out.stdout!r} {out.stderr[-300:]}"
     )
-    assert "LANDED" in out.stdout, f"the emit was dropped on exit: {out.stdout!r} {out.stderr[-300:]}"

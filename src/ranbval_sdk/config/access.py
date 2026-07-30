@@ -31,7 +31,7 @@ _UNSET = object()
 
 def _is_token(value: str | None) -> bool:
     """A value is a Ranbval vault token when it carries the ``ranbval.`` prefix."""
-    return bool(value) and value.startswith("ranbval.")
+    return value is not None and value.startswith("ranbval.")
 
 
 def _ensure_env_loaded(mode: str | None = None) -> None:
@@ -49,9 +49,7 @@ def _resolve(env_var: str, *, reveal: bool) -> Any:
     """Decrypt a vault token or pass a plain value through; optionally reveal plaintext."""
     raw = os.environ.get(env_var)
     if raw is None:
-        raise MissingKeyError(
-            f"{env_var!r} is not set — did you create it in your .ranbval file?"
-        )
+        raise MissingKeyError(f"{env_var!r} is not set — did you create it in your .ranbval file?")
     if not _is_token(raw):
         return raw  # ordinary, safe-to-commit config value
     from ranbval_sdk.crypto import decrypt_key
@@ -89,9 +87,7 @@ class Vault:
 
     __slots__ = ("_cache", "_loaded", "_opts", "_lock")
 
-    def __init__(
-        self, *, mode: str | None = None, override: bool = False, autoload: bool = True
-    ):
+    def __init__(self, *, mode: str | None = None, override: bool = False, autoload: bool = True):
         self._cache: dict[str, Any] = {}
         self._loaded = False
         self._lock = threading.Lock()
@@ -187,9 +183,7 @@ class Vault:
 env = Vault()
 
 
-def inject(
-    *names: str, reveal: bool = False, mode: str | None = None, **aliases: str
-) -> Callable:
+def inject(*names: str, reveal: bool = False, mode: str | None = None, **aliases: str) -> Callable:
     """Decorator that injects decrypted secrets into a function as keyword arguments.
 
     ::
@@ -297,9 +291,7 @@ def _lookup_public(name: str, default: Any) -> str:
     if raw is None:
         if default is not _UNSET:
             return default
-        raise MissingKeyError(
-            f"{name!r} is not set — did you create it in your .ranbval file?"
-        )
+        raise MissingKeyError(f"{name!r} is not set — did you create it in your .ranbval file?")
     if _is_token(raw):
         raise RanbvalConfigError(
             f"{name!r} holds an encrypted vault token, not a plaintext value. "
@@ -413,9 +405,7 @@ def proxy_token(name: str, *, mode: str | None = None) -> str:
 
     raw = os.environ.get(name)
     if raw is None:
-        raise MissingKeyError(
-            f"{name!r} is not set — did you create it in your .ranbval file?"
-        )
+        raise MissingKeyError(f"{name!r} is not set — did you create it in your .ranbval file?")
     if not _is_token(raw):
         raise RanbvalConfigError(
             f"{name!r} is not an encrypted 'ranbval.*' token, so it cannot be used via the "

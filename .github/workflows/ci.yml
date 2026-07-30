@@ -55,6 +55,33 @@ jobs:
       - name: Tests
         run: python -m pytest -q
 
+  # Local hooks are per-clone and skippable: .git/hooks is never committed, so a fresh clone has
+  # none until someone runs `pre-commit install`, and `git commit --no-verify` skips them even
+  # when installed. This job is the copy that cannot be bypassed — the local hooks exist to give
+  # the same answer in seconds instead of after a push and a CI queue.
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks scans history, not just the working tree
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      # Latest of everything, deliberately. The local hooks use `language: system`, so keep your
+      # own tools current too (`pip install -U ...`) — if CI runs a newer linter than you do, the
+      # split shows up as "green locally, red in CI" and costs a push to discover.
+      - name: Install the package and the tools the hooks call
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[httpx]'
+          pip install --upgrade pytest mypy pip-audit build twine pre-commit
+      - name: Run every hook, both stages
+        run: |
+          pre-commit run --all-files --show-diff-on-failure
+          pre-commit run --all-files --hook-stage pre-push --show-diff-on-failure
+
   build:
     runs-on: ubuntu-latest
     steps:

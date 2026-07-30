@@ -18,7 +18,7 @@ import contextlib
 import threading
 import time
 import traceback
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 # The record shape lives in the serializers package; re-exported here so
 # ``from ranbval_sdk.crypto.audit import AuditEntry`` keeps working.
@@ -32,10 +32,10 @@ _SDK_PACKAGE = "ranbval_sdk"
 
 # Optional callback fired on every .use() — set by the opt-in access monitor
 # (:mod:`ranbval_sdk.telemetry.monitor`). Never raises into the caller.
-_notifier: object = None
+_notifier: Callable[[str, str], None] | None = None
 
 
-def set_access_notifier(fn: object) -> None:
+def set_access_notifier(fn: Callable[[str, str], None] | None) -> None:
     """Register (or clear with ``None``) a callback ``fn(label, caller)`` fired on each .use()."""
     global _notifier
     _notifier = fn

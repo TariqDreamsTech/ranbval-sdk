@@ -119,9 +119,7 @@ def proxy_request(
         The proxy rejected the request (bad credentials, unknown token, etc.)
         or the proxy itself was unreachable.
     """
-    host = (host_url or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip(
-        "/"
-    )
+    host = (host_url or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip("/")
 
     # ── Resolve api_key ──────────────────────────────────────────────────────
     resolved_api_key = (api_key or os.environ.get("RANBVAL_API_KEY") or "").strip()
@@ -140,9 +138,7 @@ def proxy_request(
             except ValueError:
                 pass
         if not resolved_project_secret:
-            resolved_project_secret = os.environ.get(
-                "RANBVAL_PROJECT_SECRET", ""
-            ).strip()
+            resolved_project_secret = os.environ.get("RANBVAL_PROJECT_SECRET", "").strip()
     if not resolved_project_secret:
         raise ProxyError(
             "No project secret found. Set RANBVAL_PROJECT_SECRET in your .ranbval file "

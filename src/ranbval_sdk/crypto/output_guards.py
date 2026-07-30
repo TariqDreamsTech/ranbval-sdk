@@ -58,6 +58,7 @@ from __future__ import annotations
 import builtins
 import sys
 import warnings
+from typing import Any
 
 from ranbval_sdk.crypto.secret_string import _ProtectedStr, set_reveal_sink
 
@@ -67,7 +68,7 @@ _orig_print = builtins.print
 #: ``{stream_name: (the object we patched, its original write)}``. Both streams are guarded:
 #: stdout is where a stray ``print`` goes, stderr is where ``logging`` goes by default — and a
 #: credential in a log line is the leak that outlives the terminal.
-_patched_streams: dict[str, tuple[object, object]] = {}
+_patched_streams: dict[str, tuple[Any, Any]] = {}
 
 #: Plaintext values revealed by ``.use()`` while the guard is installed. Populated only then —
 #: with the guard off, nothing is retained and this module costs nothing.
@@ -109,7 +110,7 @@ def _check(arg: object) -> None:
         raise PermissionError(_LEAK_ERR)
 
 
-def _guarded_print(*args: object, **kwargs: object) -> None:
+def _guarded_print(*args: Any, **kwargs: Any) -> None:
     for arg in args:
         _check(arg)
     _orig_print(*args, **kwargs)
@@ -177,8 +178,9 @@ def uninstall_output_guards() -> None:
     # replace sys.stdout/stderr; our write went with the old object, and assigning the saved one
     # onto a different object would break a stream we never touched.
     for name, (stream, original) in _patched_streams.items():
-        if getattr(sys, name, None) is stream:
-            stream.write = original  # type: ignore[method-assign]
+        current = getattr(sys, name, None)
+        if current is not None and current is stream:
+            stream.write = original
     _patched_streams.clear()
     set_reveal_sink(None)
     _revealed.clear()

@@ -43,9 +43,13 @@ def handle(args: argparse.Namespace) -> int:
         counts[kind] += 1
         is_token = value.startswith("ranbval.")
         if kind == "public" and is_token:
-            warnings_.append(f"{name}: PUBLIC_ but value is an encrypted token — rename to SECRET_/PROXY_")
+            warnings_.append(
+                f"{name}: PUBLIC_ but value is an encrypted token — rename to SECRET_/PROXY_"
+            )
         elif kind in ("secret", "proxy") and value and not is_token:
-            warnings_.append(f"{name}: {kind.upper()}_ but value is plaintext (not a ranbval.* token)")
+            warnings_.append(
+                f"{name}: {kind.upper()}_ but value is plaintext (not a ranbval.* token)"
+            )
 
     competing = sorted(p.name for p in root.glob(".env*") if p.is_file() and p.name != ".ranbval")
     if competing:
@@ -71,8 +75,8 @@ def handle(args: argparse.Namespace) -> int:
     )
     for w in warnings_:
         print(_shared.color(f"⚠ {w}", "yellow"))
-    for e in errors:
-        print(_shared.color(f"✗ {e}", "red"))
+    for err in errors:
+        print(_shared.color(f"✗ {err}", "red"))
     if errors:
         print(_shared.color(f"\n{len(errors)} error(s).", "red"))
         return 1

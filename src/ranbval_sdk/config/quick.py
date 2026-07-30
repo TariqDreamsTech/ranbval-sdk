@@ -99,8 +99,9 @@ class Use:
     def _get(self, short: str) -> Any:
         self._ensure_loaded()
         if short not in self._cache:
-            from ranbval_sdk.config.access import _is_token
             import os
+
+            from ranbval_sdk.config.access import _is_token
 
             name = self._resolve_name(short)
             raw = os.environ.get(name)

@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v4.0.1`
+# Ranbval SDK `v4.1.0`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
@@ -892,6 +892,43 @@ from ranbval_sdk import env
 env.public("PUBLIC_DATABASE_URL")   # -> plain str
 env.public("PROXY_OPENAI_KEY")      # -> raises (PROXY_) — use proxy_request()
 ```
+
+## Confining a config to one subtree
+
+`.ranbval` is found by walking **upward** from the working directory. That is convenient — any
+subfolder of your project just works — but it also means a config placed high in a tree is picked
+up by every project beneath it, including ones that should never see those credentials.
+
+`RANBVAL_ALLOWED_PATHS` confines it:
+
+```bash
+# .ranbval
+RANBVAL_ALLOWED_PATHS=.              # this directory and everything under it
+RANBVAL_ALLOWED_PATHS=./content      # one subtree
+RANBVAL_ALLOWED_PATHS=./api,./jobs   # two subtrees, nothing else (comma-separated)
+```
+
+**Subdirectories inherit.** The check is "is the working directory at or below an allowed
+directory", so anything created under an allowed path works with no config change:
+
+```
+content/                    ✓ allowed
+content/api/                ✓ allowed
+content/api/v1/deep/        ✓ allowed
+content/jobs/nightly/       ✓ allowed  (created later — no config change needed)
+other-project/              ✗ RanbvalConfigError (path_not_allowed)
+content-backup/             ✗ path components are compared, not string prefixes
+```
+
+Relative entries resolve against the directory holding `.ranbval`, so the file stays portable
+across machines and checkouts. Absolute paths work too. An absent or empty value means no
+restriction — a typo must not brick a config.
+
+> **This is scoping, not a security boundary.** Anyone holding the project secret can run from an
+> allowed path or copy the files into one. It stops the wrong project picking up a parent's
+> credentials by accident — the mistake that actually happens in a monorepo. It does not stop
+> someone who wants the values. For that, see the repo allowlist (server-side, unbypassable) or a
+> `PROXY_` secret.
 
 ## Ranbval is the sole loader
 

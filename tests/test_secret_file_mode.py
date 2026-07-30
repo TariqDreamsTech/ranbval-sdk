@@ -108,3 +108,34 @@ class TestInitCreatesItPrivate:
 
         assert init.handle(Args()) == 0
         assert existing.read_text(encoding="utf-8") == "RANBVAL_PROJECT_SECRET=mine\n"
+
+
+class TestTemplatesAreNotSecretFiles:
+    """`.ranbval.example` is committed on purpose and holds a placeholder, not a key."""
+
+    @pytest.mark.parametrize(
+        "name", [".ranbval.example", ".ranbval.sample", ".ranbval.template", ".ranbval.dist"]
+    )
+    def test_a_template_is_not_treated_as_holding_the_project_secret(self, tmp_path, name, recwarn):
+        from ranbval_sdk.config.loader import _file_holds_project_secret
+
+        p = tmp_path / name
+        p.write_text(
+            "RANBVAL_PROJECT_SECRET=your_project_secret_from_dashboard\n", encoding="utf-8"
+        )
+        p.chmod(0o644)  # a template is meant to be world-readable and committed
+
+        assert _file_holds_project_secret(p) is False
+        _check_secret_file_modes([p])
+        assert len(recwarn) == 0
+
+    def test_a_real_file_with_the_same_content_is_still_flagged(self, tmp_path):
+        from ranbval_sdk.config.loader import _file_holds_project_secret
+
+        p = tmp_path / ".ranbval.local"
+        p.write_text("RANBVAL_PROJECT_SECRET=ranbval-proj-real\n", encoding="utf-8")
+        p.chmod(0o644)
+
+        assert _file_holds_project_secret(p) is True
+        with pytest.warns(UserWarning, match="chmod 600"):
+            _check_secret_file_modes([p])

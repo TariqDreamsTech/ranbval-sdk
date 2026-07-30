@@ -29,9 +29,7 @@ def project(tmp_path):
         "PUBLIC_APP_NAME=demo\nPUBLIC_DATABASE_URL=sqlite:///./default.db\n"
     )
     for stage in STAGES:
-        (tmp_path / f".ranbval.{stage}").write_text(
-            f"PUBLIC_DATABASE_URL=sqlite:///./{stage}.db\n"
-        )
+        (tmp_path / f".ranbval.{stage}").write_text(f"PUBLIC_DATABASE_URL=sqlite:///./{stage}.db\n")
     return tmp_path
 
 
