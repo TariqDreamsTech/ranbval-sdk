@@ -30,7 +30,7 @@ default_language_version:
 repos:
   # ── File hygiene ───────────────────────────────────────────────────────────
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -60,7 +60,7 @@ repos:
   # Configured in pyproject.toml ([tool.ruff]) so the hook and a local run agree. Covers in one
   # pass what flake8, isort, pyupgrade and pep8-naming would each contribute separately.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.4
+    rev: v0.16.0
     hooks:
       - id: ruff
         args: [--fix]
@@ -79,7 +79,7 @@ repos:
   # This repository is unusually prose-heavy — README, CHANGELOG and the long docstrings are the
   # product's honesty surface, so typos in them are worth catching.
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+    rev: v2.4.3
     hooks:
       - id: codespell
         args: ["--skip=poetry.lock,*.lock,dist,.git"]
@@ -89,7 +89,7 @@ repos:
   # caught before it is pushed. Both stages: catching it at commit is better, catching it at
   # push is the last point before it leaves the machine.
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.23.3
+    rev: v8.30.0
     hooks:
       - id: gitleaks
         stages: [pre-commit, pre-push]
@@ -98,7 +98,7 @@ repos:
   # Source only. Tests deliberately construct weak/fake secrets and exercise unsafe paths, so
   # scanning them reports the very thing each test exists to assert.
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.8.2
+    rev: 1.9.4
     hooks:
       - id: bandit
         args: [-c, pyproject.toml, -q, -ll]  # gate on medium+; see [tool.bandit] for why
@@ -109,7 +109,7 @@ repos:
   # ── CI workflow correctness ────────────────────────────────────────────────
   # A broken workflow only shows up after a push, when the run silently does not start.
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.7
+    rev: v1.7.12
     hooks:
       - id: actionlint
 

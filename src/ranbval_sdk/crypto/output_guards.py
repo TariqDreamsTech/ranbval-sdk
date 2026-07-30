@@ -178,7 +178,8 @@ def uninstall_output_guards() -> None:
     # replace sys.stdout/stderr; our write went with the old object, and assigning the saved one
     # onto a different object would break a stream we never touched.
     for name, (stream, original) in _patched_streams.items():
-        if getattr(sys, name, None) is stream:
+        current = getattr(sys, name, None)
+        if current is not None and current is stream:
             stream.write = original
     _patched_streams.clear()
     set_reveal_sink(None)

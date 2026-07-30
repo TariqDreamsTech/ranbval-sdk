@@ -52,6 +52,16 @@ All notable changes to `ranbval-sdk` are documented here.
   **`black` is deliberately absent.** `ruff-format` is black's formatting model reimplemented;
   running both makes them disagree on edge cases and rewrite each other's output every commit.
 
+  Hook revisions and the tools CI installs both track latest rather than pinned versions. The
+  first CI run of these hooks failed because the local hooks use `language: system` — they run
+  whatever the developer has installed — while CI installed a newer `mypy`, so the suite was green
+  locally and red in CI. Keep your own tools current (`pip install -U pytest mypy pip-audit build
+  twine pre-commit`) or the split returns.
+
+- **`httpx` is now a declared optional dependency** (`pip install ranbval-sdk[httpx]`).
+  `integrations.httpx_transport` imports it at module level, but nothing declared it, so type
+  checking could not resolve it and a user had no way to know what that integration required.
+
   **CI runs every hook again, at both stages.** `.git/hooks` is never committed, so a fresh clone
   has none until someone runs the install, and `--no-verify` skips them even when present. The CI
   job is the copy that cannot be bypassed; the local hooks exist to give the same answer in
@@ -77,6 +87,12 @@ All notable changes to `ranbval-sdk` are documented here.
 
 - **`cli/check.py` reused a name bound by an earlier `except ... as e`**, which Python deletes at
   block exit. Not a runtime fault, but exactly the shadowing that becomes one under edit.
+
+- **`scripts/audit_deps.py` reported a missing tool as a vulnerability finding.** When `pip-audit`
+  was not installed it printed *"vulnerable dependencies among: …"* — a red result naming packages
+  that were never audited. "The tool is absent" and "the dependencies are vulnerable" are different
+  facts, and a security tool that conflates them is the failure this project is about. It now says
+  which one it is.
 
 ### Changed
 

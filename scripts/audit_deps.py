@@ -40,10 +40,18 @@ def main() -> int:
     finally:
         Path(requirements).unlink(missing_ok=True)
 
+    # "The tool is missing" and "the dependencies are vulnerable" are different facts, and
+    # reporting the first as the second is the exact dishonesty this project exists to avoid:
+    # a red hook nobody can act on, or worse, one that looks like a finding and is not.
+    if "No module named pip_audit" in result.stderr:
+        print("✗ pip-audit is not installed — cannot audit. Install it with: pip install pip-audit")
+        print("  (this is a missing tool, NOT a vulnerability finding)")
+        return 1
+
     if result.returncode != 0:
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)
-        print(f"\n✗ vulnerable dependencies among: {', '.join(deps)}")
+        print(f"\n✗ known vulnerabilities among the declared dependencies: {', '.join(deps)}")
         return 1
 
     print(f"✓ no known vulnerabilities in: {', '.join(deps)}")

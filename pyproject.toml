@@ -43,6 +43,12 @@ classifiers = [
     "Typing :: Typed",
 ]
 
+[project.optional-dependencies]
+# ranbval_sdk.integrations.httpx_transport imports httpx at module level. It is optional because
+# the rest of the SDK does not need it; declaring it as an extra is how a caller installs what
+# that integration actually requires, and how type checking resolves it in CI.
+httpx = ["httpx>=0.27.0"]
+
 [project.scripts]
 ranbval = "ranbval_sdk.cli:main"
 
