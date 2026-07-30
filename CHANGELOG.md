@@ -17,7 +17,7 @@ All notable changes to `ranbval-sdk` are documented here.
   # .ranbval
   RANBVAL_ALLOWED_PATHS=.              # this directory and everything under it
   RANBVAL_ALLOWED_PATHS=./content      # one subtree
-  RANBVAL_ALLOWED_PATHS=./api:./jobs   # two, nothing else
+  RANBVAL_ALLOWED_PATHS=./api,./jobs   # two, nothing else (comma-separated)
   ```
 
   **Subdirectories inherit.** The test is "is the working directory at or below an allowed
@@ -28,6 +28,13 @@ All notable changes to `ranbval-sdk` are documented here.
 
   Path components are compared, not string prefixes, so a sibling such as `content-backup` does
   not match an allowed `content`.
+
+  Entries are **comma-separated** (`;` accepted too), deliberately not `os.pathsep`. That is `:`
+  on POSIX and `;` on Windows, so a committed `.ranbval` would have parsed differently depending
+  on who checked it out — the file travels with the repository, the platform does not. `:` cannot
+  be a separator at all, because a Windows absolute path contains one (`C:\Users\x`). The first
+  cut used `os.pathsep` and every Windows CI job failed on it; the OS axis added in 3.7.0 caught
+  it before release.
 
   *Honest limit — this is scoping, not a security boundary.* Anyone holding the project secret can
   run from an allowed path or copy the files into one. It stops the wrong project picking up a

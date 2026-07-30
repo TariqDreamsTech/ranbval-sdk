@@ -58,7 +58,7 @@ def test_a_directory_created_later_inherits_without_a_config_change(tree, monkey
 def test_several_subtrees_can_be_listed(tree, monkeypatch):
     (tree / "jobs").mkdir()
     (tree / ".ranbval").write_text(
-        "RANBVAL_ALLOWED_PATHS=./content:./jobs\nPUBLIC_APP=demo\n", encoding="utf-8"
+        "RANBVAL_ALLOWED_PATHS=./content,./jobs\nPUBLIC_APP=demo\n", encoding="utf-8"
     )
     for sub in ("content", "jobs"):
         monkeypatch.chdir(tree / sub)
@@ -94,3 +94,38 @@ def test_an_empty_value_is_not_a_lockout(tree, monkeypatch):
     (tree / ".ranbval").write_text("RANBVAL_ALLOWED_PATHS=\nPUBLIC_APP=demo\n", encoding="utf-8")
     monkeypatch.chdir(tree / "other")
     assert load_ranbval() is True
+
+
+class TestSeparatorIsPlatformIndependent:
+    """A committed .ranbval must parse identically wherever it is checked out.
+
+    os.pathsep is ":" on POSIX and ";" on Windows, so using it made the same file mean different
+    things per platform — the Windows CI jobs caught exactly that. ":" cannot be a separator at
+    all, because a Windows absolute path contains one (C:\\Users\\x).
+    """
+
+    @pytest.mark.parametrize("sep", [",", ";", " , ", ", "])
+    def test_comma_and_semicolon_both_split(self, tree, monkeypatch, sep):
+        (tree / "jobs").mkdir()
+        (tree / ".ranbval").write_text(
+            f"RANBVAL_ALLOWED_PATHS=./content{sep}./jobs\nPUBLIC_APP=demo\n", encoding="utf-8"
+        )
+        for sub in ("content", "jobs"):
+            monkeypatch.chdir(tree / sub)
+            assert load_ranbval() is True
+
+    def test_a_windows_style_absolute_path_survives_parsing(self, tmp_path):
+        # The regression: splitting on ":" would tear "C" off "C:\Users\x".
+        from ranbval_sdk.config.loader import _resolve_allowed_paths
+
+        parsed = _resolve_allowed_paths(r"C:\Users\project,D:\other", tmp_path)
+        assert len(parsed) == 2
+        assert all("Users" in str(parsed[0]) or "other" in str(p) for p in parsed)
+
+    def test_os_pathsep_is_not_used(self):
+        # Guards the intent, not just the behaviour: if someone reintroduces os.pathsep the
+        # POSIX suite would still pass and only Windows would break, which is how this got in.
+        from ranbval_sdk.config import loader
+
+        assert "," in loader._PATH_SEPARATORS
+        assert ":" not in loader._PATH_SEPARATORS

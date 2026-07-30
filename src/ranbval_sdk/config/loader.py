@@ -280,15 +280,24 @@ def _check_secret_file_modes(paths: list[Path]) -> None:
 
 
 #: Key in ``.ranbval`` listing the directories this configuration may be loaded from.
-#: ``os.pathsep``-separated, the same convention as ``PATH``.
 _ALLOWED_PATHS_KEY = "RANBVAL_ALLOWED_PATHS"
+
+#: Separators accepted between entries. Deliberately **not** ``os.pathsep``: that is ``:`` on
+#: POSIX and ``;`` on Windows, so the same committed ``.ranbval`` would parse differently
+#: depending on who checked it out — the file travels with the repository, the platform does not.
+#: ``:`` is excluded outright because a Windows absolute path contains one (``C:\\Users\\x``),
+#: so splitting on it would tear drive letters off. Comma is the documented form.
+_PATH_SEPARATORS = ",;"
 
 
 def _resolve_allowed_paths(raw: str, config_root: Path) -> list[Path]:
     """Parse the allowlist. Relative entries resolve against the directory holding ``.ranbval``,
     so ``.`` means "here and below" and the file stays portable across machines and checkouts."""
     out: list[Path] = []
-    for entry in raw.split(os.pathsep):
+    normalised = raw
+    for sep in _PATH_SEPARATORS[1:]:
+        normalised = normalised.replace(sep, _PATH_SEPARATORS[0])
+    for entry in normalised.split(_PATH_SEPARATORS[0]):
         entry = entry.strip()
         if not entry:
             continue

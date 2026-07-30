@@ -905,7 +905,7 @@ up by every project beneath it, including ones that should never see those crede
 # .ranbval
 RANBVAL_ALLOWED_PATHS=.              # this directory and everything under it
 RANBVAL_ALLOWED_PATHS=./content      # one subtree
-RANBVAL_ALLOWED_PATHS=./api:./jobs   # two subtrees, nothing else
+RANBVAL_ALLOWED_PATHS=./api,./jobs   # two subtrees, nothing else (comma-separated)
 ```
 
 **Subdirectories inherit.** The check is "is the working directory at or below an allowed
