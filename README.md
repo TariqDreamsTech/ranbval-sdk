@@ -167,6 +167,8 @@ ranbval run -- python app.py  # load .ranbval into the env, then run (secrets on
 An agent working in your repository — Claude Code, Copilot, Cursor, anything running a terminal —
 uses your credentials the same way you do. Two things follow, and they are worth stating separately
 because only one of them is a wall.
+<img width="1470" height="956" alt="Screenshot 2026-07-31 at 6 38 49 AM" src="https://github.com/user-attachments/assets/dde82500-187a-4371-964f-28ba6565da5f" />
+
 
 ### 1. You see it. Every decrypt, with the directory it came from
 
