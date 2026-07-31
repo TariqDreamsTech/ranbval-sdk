@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v4.1.0`
+# Ranbval SDK `v4.1.1`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
@@ -161,6 +161,66 @@ ranbval run -- python app.py  # load .ranbval into the env, then run (secrets on
 ```
 
 `ranbval check` exits non-zero on errors, so drop it into CI or a pre-commit hook.
+
+## AI coding agents: every access is attributed, and you can fence them in
+
+An agent working in your repository — Claude Code, Copilot, Cursor, anything running a terminal —
+uses your credentials the same way you do. Two things follow, and they are worth stating separately
+because only one of them is a wall.
+
+### 1. You see it. Every decrypt, with the directory it came from
+
+Every `.use()` is reported to the Live Monitor with the working directory, device, SDK version and
+timestamp. An agent does not get a quieter path than you do; it gets the same one, and its working
+directory is usually conspicuous:
+
+```
+[secret.access]  SUPABASE_TOKEN   Savvys-MacBook-Air.local
+  Repo: /private/tmp/claude-501/…/scratchpad/sbdocs        ← not a project path
+  sdk 4.x  darwin  py 3.12  client https → ingress TLS
+```
+
+That is a real line from a real log, produced by an AI assistant working on this SDK. Nothing was
+configured to catch it — attribution is on by default and has no client-side off switch.
+
+A `.env` gives you none of this. When a key leaks you cannot say which machine, which directory, or
+which tool used it, so you rotate without knowing whether you got them all.
+
+### 2. You can bind the keys to your repository
+
+Turn on the **repo allowlist** in your dashboard and decryption is checked against your
+`git remote origin` on every call. An agent working in a scratch directory, a temp clone, or a
+fork has no matching origin and gets nothing:
+
+```
+RepoNotAllowedError: this key may only be used from an allowlisted Git repository.
+```
+
+The policy is fetched from the control plane per decrypt, so it is not on the machine the agent
+controls and cannot be edited out of the way. **Turn it on** — it is the only mechanism here that
+an agent able to edit your files cannot argue with.
+
+A client-side path fence was considered and deliberately not shipped: it would have lived in the
+`.ranbval` an agent can edit, so it would have read as protection while providing none against the
+adversary it named.
+
+### What this does not claim
+
+An agent running *inside* your allowlisted repo, in an allowed path, with your project secret
+present, can decrypt exactly what you can. That is not a gap to be closed — it is what "the agent
+is working in your project" means. Anything with your credentials and your working directory has
+your access.
+
+So the honest statement is not *"an AI cannot touch your keys."* It is:
+
+> **An AI cannot use them from somewhere you did not allow, and cannot use them anywhere without
+> you seeing it.**
+
+For a credential where even that is too much — a `service_role` key, a production signing key —
+use a [`PROXY_` secret](#running-a-client-library-through-the-proxy). It is never decrypted on the
+machine at all, so there is nothing for an agent, a dependency, or a stolen laptop to read.
+
+---
 
 ## The project secret can't be committed by accident
 
@@ -892,43 +952,6 @@ from ranbval_sdk import env
 env.public("PUBLIC_DATABASE_URL")   # -> plain str
 env.public("PROXY_OPENAI_KEY")      # -> raises (PROXY_) — use proxy_request()
 ```
-
-## Confining a config to one subtree
-
-`.ranbval` is found by walking **upward** from the working directory. That is convenient — any
-subfolder of your project just works — but it also means a config placed high in a tree is picked
-up by every project beneath it, including ones that should never see those credentials.
-
-`RANBVAL_ALLOWED_PATHS` confines it:
-
-```bash
-# .ranbval
-RANBVAL_ALLOWED_PATHS=.              # this directory and everything under it
-RANBVAL_ALLOWED_PATHS=./content      # one subtree
-RANBVAL_ALLOWED_PATHS=./api,./jobs   # two subtrees, nothing else (comma-separated)
-```
-
-**Subdirectories inherit.** The check is "is the working directory at or below an allowed
-directory", so anything created under an allowed path works with no config change:
-
-```
-content/                    ✓ allowed
-content/api/                ✓ allowed
-content/api/v1/deep/        ✓ allowed
-content/jobs/nightly/       ✓ allowed  (created later — no config change needed)
-other-project/              ✗ RanbvalConfigError (path_not_allowed)
-content-backup/             ✗ path components are compared, not string prefixes
-```
-
-Relative entries resolve against the directory holding `.ranbval`, so the file stays portable
-across machines and checkouts. Absolute paths work too. An absent or empty value means no
-restriction — a typo must not brick a config.
-
-> **This is scoping, not a security boundary.** Anyone holding the project secret can run from an
-> allowed path or copy the files into one. It stops the wrong project picking up a parent's
-> credentials by accident — the mistake that actually happens in a monorepo. It does not stop
-> someone who wants the values. For that, see the repo allowlist (server-side, unbypassable) or a
-> `PROXY_` secret.
 
 ## Ranbval is the sole loader
 
