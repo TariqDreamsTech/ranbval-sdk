@@ -4,6 +4,36 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [4.1.1] - 2026-07-30
+
+### Removed
+
+- **`RANBVAL_ALLOWED_PATHS` is gone.** It confined a config to a subtree, and it shipped in 4.1.0
+  described as "scoping, not a security boundary". On review that framing was not enough: the
+  setting lived in the `.ranbval` file itself, so any process able to edit your files — the AI
+  coding agent it was most often reached for, a compromised dependency, a script — could edit the
+  fence as easily as walk past it.
+
+  A control whose only adversary can also delete it is not a weak control; it is a misleading one.
+  It occupies the place in a reader's mind where a real control should be. Removing it is the same
+  judgement applied to the `.encode()` guard in 3.7.0: a mechanism that reads as protection and
+  provides none costs more than the gap it appeared to fill.
+
+  > **⚠️ If you set this key, it is now ignored, silently.** `RANBVAL_*` names are exempt from
+  > classification, so the line will not error — it simply stops doing anything. Search your
+  > `.ranbval` files for it and delete it, so nobody later reads that line as an active control.
+
+  **Use the repo allowlist instead.** It is checked against your `git remote origin` on every
+  decrypt, and the policy is fetched from the control plane rather than read from a file on the
+  machine — so the same agent cannot edit it out of the way. For a credential where even that is
+  not enough, a `PROXY_` secret is never decrypted locally at all.
+
+  Strictly, removing a shipped feature is a major change. It is released as a patch because 4.1.0
+  was published hours earlier, and shipping a control that overstates itself for longer would be
+  the larger harm.
+
+---
+
 ## [4.1.0] - 2026-07-28
 
 ### Added
@@ -58,10 +88,6 @@ All notable changes to `ranbval-sdk` are documented here.
   locally and red in CI. Keep your own tools current (`pip install -U pytest mypy pip-audit build
   twine pre-commit`) or the split returns.
 
-- **`httpx` is now a declared optional dependency** (`pip install ranbval-sdk[httpx]`).
-  `integrations.httpx_transport` imports it at module level, but nothing declared it, so type
-  checking could not resolve it and a user had no way to know what that integration required.
-
   **CI runs every hook again, at both stages.** `.git/hooks` is never committed, so a fresh clone
   has none until someone runs the install, and `--no-verify` skips them even when present. The CI
   job is the copy that cannot be bypassed; the local hooks exist to give the same answer in
@@ -76,6 +102,10 @@ All notable changes to `ranbval-sdk` are documented here.
   The build hook builds into a temporary directory rather than `./dist`, deliberately: a stale
   wheel left in `dist/` is a live hazard, since `twine upload dist/*` publishes every version
   sitting there and a published version can never be replaced.
+
+- **`httpx` is now a declared optional dependency** (`pip install ranbval-sdk[httpx]`).
+  `integrations.httpx_transport` imports it at module level, but nothing declared it, so type
+  checking could not resolve it and a user had no way to know what that integration required.
 
 ### Fixed
 

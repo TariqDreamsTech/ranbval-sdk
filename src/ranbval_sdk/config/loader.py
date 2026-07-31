@@ -279,74 +279,6 @@ def _check_secret_file_modes(paths: list[Path]) -> None:
     warnings.warn(f"Ranbval: {message}", stacklevel=3)
 
 
-#: Key in ``.ranbval`` listing the directories this configuration may be loaded from.
-_ALLOWED_PATHS_KEY = "RANBVAL_ALLOWED_PATHS"
-
-#: Separators accepted between entries. Deliberately **not** ``os.pathsep``: that is ``:`` on
-#: POSIX and ``;`` on Windows, so the same committed ``.ranbval`` would parse differently
-#: depending on who checked it out — the file travels with the repository, the platform does not.
-#: ``:`` is excluded outright because a Windows absolute path contains one (``C:\\Users\\x``),
-#: so splitting on it would tear drive letters off. Comma is the documented form.
-_PATH_SEPARATORS = ",;"
-
-
-def _resolve_allowed_paths(raw: str, config_root: Path) -> list[Path]:
-    """Parse the allowlist. Relative entries resolve against the directory holding ``.ranbval``,
-    so ``.`` means "here and below" and the file stays portable across machines and checkouts."""
-    out: list[Path] = []
-    normalised = raw
-    for sep in _PATH_SEPARATORS[1:]:
-        normalised = normalised.replace(sep, _PATH_SEPARATORS[0])
-    for entry in normalised.split(_PATH_SEPARATORS[0]):
-        entry = entry.strip()
-        if not entry:
-            continue
-        p = Path(entry).expanduser()
-        out.append((p if p.is_absolute() else config_root / p).resolve())
-    return out
-
-
-def _assert_path_allowed(values: dict[str, str], config_root: Path | None) -> None:
-    """Refuse to load when the working directory is outside every allowed path.
-
-    ``.ranbval`` is discovered by walking *upward*, so a config placed high in a tree is picked up
-    by every project beneath it — including ones that should never see those credentials. This key
-    confines it::
-
-        RANBVAL_ALLOWED_PATHS=.            # this directory and everything under it
-        RANBVAL_ALLOWED_PATHS=./api:./jobs # two subtrees, nothing else
-
-    **Subdirectories inherit.** The check is "is the working directory at or below an allowed
-    directory", so any folder created under an allowed path is allowed with no config change.
-
-    Honest limit — this is **scoping, not a security boundary.** Anyone holding the project secret
-    can copy the files into an allowed path or run from one. It stops the wrong project picking up
-    a parent's credentials by accident, which is the mistake that actually happens in a monorepo;
-    it does not stop someone who wants the values. For that, see the repo allowlist (server-side,
-    unbypassable) or a ``PROXY_`` secret.
-    """
-    raw = values.get(_ALLOWED_PATHS_KEY, "").strip()
-    if not raw or config_root is None:
-        return
-
-    allowed = _resolve_allowed_paths(raw, config_root)
-    if not allowed:
-        return
-
-    cwd = Path(os.getcwd()).resolve()
-    if any(cwd == a or cwd.is_relative_to(a) for a in allowed):
-        return
-
-    listed = ", ".join(str(a) for a in allowed)
-    raise RanbvalConfigError(
-        f"This .ranbval may only be loaded from {listed} (and below), but the working directory "
-        f"is {cwd}. A config found by walking upward would otherwise be used by every project "
-        f"beneath it. Move the work under an allowed path, or widen "
-        f"{_ALLOWED_PATHS_KEY} in {config_root / '.ranbval'}.",
-        code="path_not_allowed",
-    )
-
-
 def find_ranbval_directory(start: Path | str | None = None) -> Path | None:
     """
     Nearest directory (cwd → parents) that contains ``.ranbval`` or any ``.ranbval.*`` file.
@@ -566,9 +498,6 @@ def load_ranbval(
 
     # Every variable must declare its class via a name prefix (PUBLIC_/SECRET_/PROXY_); reject
     # anything unclassified, then warn on values that contradict their prefix.
-    # Confine before anything else uses the values: a config found by walking upward would
-    # otherwise be picked up by every project beneath it.
-    _assert_path_allowed(merged, config_root)
     _validate_classification(merged)
     _warn_value_mismatches(merged)
 
