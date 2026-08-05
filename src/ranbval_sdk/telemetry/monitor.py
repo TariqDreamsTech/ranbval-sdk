@@ -171,3 +171,26 @@ def uninstall_access_monitor() -> None:
 
 
 __all__ = ["install_access_monitor", "uninstall_access_monitor", "classify_context"]
+
+
+def notify_integrity_failure(changed: list[str]) -> None:
+    """Report that this installation no longer matches the published build.
+
+    Dispatched through the same path as every other monitor event, so it lands in the Live Monitor
+    beside the decrypt that triggered it. That is what makes the local check worth more than the
+    code it is written in: whoever edited the package still has to defeat the reporting, and a
+    machine that stops sending healthy integrity is itself something you can notice.
+
+    Never raises into the caller — the check raises on its own, and reporting must not be the
+    thing that decides whether it does.
+    """
+    try:
+        _dispatch(
+            {
+                "kind": "secret.installation_modified",
+                "files": sorted(changed)[:20],
+                "file_count": len(changed),
+            }
+        )
+    except Exception:  # nosec B110 - reporting must never break the caller
+        pass

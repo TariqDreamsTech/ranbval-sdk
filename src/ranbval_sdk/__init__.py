@@ -86,7 +86,7 @@ from ranbval_sdk.telemetry import (
     uninstall_access_monitor,
 )
 
-__version__ = "4.3.0"
+__version__ = "4.4.0"
 
 __all__ = [
     # Control plane
