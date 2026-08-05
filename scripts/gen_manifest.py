@@ -60,12 +60,32 @@ def main() -> int:
     check = "--check" in sys.argv
 
     if check:
-        current = MANIFEST.read_text() if MANIFEST.is_file() else ""
-        if current != rendered:
-            print("FAIL: _manifest.py is stale — run: python scripts/gen_manifest.py")
-            return 1
-        print(f"OK: manifest current ({len(digests)} files)")
-        return 0
+        # Compare the digests, not the rendered text. Comparing text made the check sensitive to
+        # how the file happened to be written — newline translation, trailing whitespace, the
+        # ordering of an unrelated edit — none of which say anything about whether the manifest
+        # describes the current code. On Windows that produced a permanent "stale" with no way to
+        # tell from the message what actually differed.
+        recorded = {}
+        if MANIFEST.is_file():
+            namespace = {}
+            exec(compile(MANIFEST.read_text(), str(MANIFEST), "exec"), namespace)  # nosec B102
+            recorded = namespace.get("FILE_DIGESTS", {})
+
+        if recorded == digests:
+            print(f"OK: manifest current ({len(digests)} files)")
+            return 0
+
+        missing = sorted(set(digests) - set(recorded))
+        extra = sorted(set(recorded) - set(digests))
+        changed = sorted(k for k in set(digests) & set(recorded) if digests[k] != recorded[k])
+        print("FAIL: _manifest.py is stale - run: python scripts/gen_manifest.py")
+        if missing:
+            print(f"  not recorded: {', '.join(missing[:5])}")
+        if extra:
+            print(f"  recorded but gone: {', '.join(extra[:5])}")
+        if changed:
+            print(f"  contents differ: {', '.join(changed[:5])}")
+        return 1
 
     MANIFEST.write_text(rendered)
     print(f"OK: wrote {MANIFEST.relative_to(ROOT)} ({len(digests)} files)")
