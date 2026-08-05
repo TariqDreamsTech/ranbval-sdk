@@ -4,6 +4,30 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [4.2.0] - 2026-07-30
+
+### Added
+
+- **The output guard now installs itself at the first decrypt.** It was installed by
+  `load_ranbval()` only, which left a real hole: `safe_decrypt(token, secret)` called directly —
+  a script, a notebook cell, a REPL — produced a value with no guard at all, and
+  `print(f"{value}")` emitted the credential in full. Measured, not assumed:
+
+  ```
+  before:  load_ranbval() skipped  ->  guard installed? False  ->  print leaked the key
+  after:   load_ranbval() skipped  ->  guard installs on .use()  ->  PermissionError
+  ```
+
+  `SecretString.use()` now raises the guard before it produces any plaintext, so the value that
+  triggered the install is itself registered — otherwise the very first secret, the one most
+  likely to be printed while debugging, would be the one the guard could not recognise.
+
+  An explicit refusal is remembered rather than inferred: `load_ranbval(guard_stdout=False)` and
+  `uninstall_output_guards()` both record the opt-out, so the next decrypt does not put back what
+  the caller just declined.
+
+---
+
 ## [4.1.1] - 2026-07-30
 
 ### Removed

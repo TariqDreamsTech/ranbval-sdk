@@ -61,6 +61,25 @@ from ranbval_sdk.crypto import enforcement, memory
 # could test. ``None`` (the default) means nothing is retained.
 _reveal_sink: Callable[[str], None] | None = None
 
+#: Bound on first use so the hot path pays one attribute check, not an import.
+_output_guards: object = None
+
+
+def _ensure_output_guard() -> None:
+    """Put the stdout/stderr guard up before this process holds its first plaintext.
+
+    Installing it in ``load_ranbval()`` alone left a real gap: ``safe_decrypt(token, secret)``
+    called directly — a script, a notebook cell, a REPL — produced a fully unguarded value. The
+    guard now arrives with the first secret regardless of how the caller got there, and declines
+    to reinstall itself if the caller opted out on purpose.
+    """
+    global _output_guards
+    if _output_guards is None:
+        from ranbval_sdk.crypto import output_guards
+
+        _output_guards = output_guards
+    _output_guards.ensure_installed()  # type: ignore[attr-defined]
+
 
 def set_reveal_sink(fn: Callable[[str], None] | None) -> None:
     """Register (or clear with ``None``) the revealed-plaintext sink used by the output guard."""
@@ -333,6 +352,8 @@ class SecretString:
             raise RuntimeError("SecretString.use() has been tampered with")
         if object.__getattribute__(self, "_wiped"):
             raise RuntimeError("SecretString has been wiped and cannot be used again")
+        # Before any plaintext exists in this process.
+        _ensure_output_guard()
         label = object.__getattribute__(self, "_label")
         # Reveal gate: if this secret is restricted to explicit reveal scopes, refuse to produce
         # the plaintext outside one (allow .use() at exactly one approved line, block elsewhere).
