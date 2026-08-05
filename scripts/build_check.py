@@ -30,20 +30,20 @@ def main() -> int:
     # The manifest must describe the code being packaged, so regenerate before building rather
     # than trusting that someone remembered.
     if run([sys.executable, str(ROOT / "scripts" / "gen_manifest.py")]) != 0:
-        print("✗ could not regenerate the integrity manifest")
+        print("FAIL: could not regenerate the integrity manifest")
         return 1
 
     with tempfile.TemporaryDirectory() as tmp:
         if run([sys.executable, "-m", "build", "--outdir", tmp, "-q"]) != 0:
-            print("✗ build failed")
+            print("FAIL: build failed")
             return 1
 
         artifacts = sorted(Path(tmp).iterdir())
         if run([sys.executable, "-m", "twine", "check", *map(str, artifacts)]) != 0:
-            print("✗ twine check failed")
+            print("FAIL: twine check failed")
             return 1
 
-        print(f"✓ built and validated: {', '.join(a.name for a in artifacts)}")
+        print(f"OK: built and validated: {', '.join(a.name for a in artifacts)}")
         return 0
 
 

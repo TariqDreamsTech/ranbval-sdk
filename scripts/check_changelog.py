@@ -22,11 +22,11 @@ def main() -> int:
     changelog = (ROOT / "CHANGELOG.md").read_text()
 
     if re.search(rf"^## \[{re.escape(version)}\]", changelog, re.MULTILINE):
-        print(f"✓ {version} has a CHANGELOG entry")
+        print(f"OK: {version} has a CHANGELOG entry")
         return 0
 
     released = re.findall(r"^## \[([^\]]+)\]", changelog, re.MULTILINE)[:3]
-    print(f"✗ pyproject version {version} has no '## [{version}]' entry in CHANGELOG.md")
+    print(f"FAIL: pyproject version {version} has no '## [{version}]' entry in CHANGELOG.md")
     print(f"  most recent entries: {', '.join(released) or 'none'}")
     return 1
 

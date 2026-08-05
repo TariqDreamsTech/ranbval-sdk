@@ -21,12 +21,20 @@ from ranbval_sdk._internal.integrity import file_digest  # noqa: E402
 
 
 def build() -> dict[str, str]:
+    """Digests keyed by POSIX-style relative path.
+
+    `str(Path.relative_to(...))` yields the platform separator, so a manifest generated on Linux
+    and one regenerated on Windows never matched, and `--check` was permanently stale there. The
+    Windows CI jobs caught it. `as_posix()` makes the file mean the same thing wherever it is
+    produced, which it has to: the manifest ships inside the wheel and is verified on whatever
+    machine installs it.
+    """
     digests = {}
-    for path in sorted(PKG.rglob("*.py")):
+    for path in PKG.rglob("*.py"):
         if path == MANIFEST:
             continue
-        digests[str(path.relative_to(PKG))] = file_digest(path)
-    return digests
+        digests[path.relative_to(PKG).as_posix()] = file_digest(path)
+    return dict(sorted(digests.items()))
 
 
 def render(digests: dict[str, str]) -> str:
@@ -54,13 +62,13 @@ def main() -> int:
     if check:
         current = MANIFEST.read_text() if MANIFEST.is_file() else ""
         if current != rendered:
-            print("✗ _manifest.py is stale — run: python scripts/gen_manifest.py")
+            print("FAIL: _manifest.py is stale — run: python scripts/gen_manifest.py")
             return 1
-        print(f"✓ manifest current ({len(digests)} files)")
+        print(f"OK: manifest current ({len(digests)} files)")
         return 0
 
     MANIFEST.write_text(rendered)
-    print(f"✓ wrote {MANIFEST.relative_to(ROOT)} ({len(digests)} files)")
+    print(f"OK: wrote {MANIFEST.relative_to(ROOT)} ({len(digests)} files)")
     return 0
 
 

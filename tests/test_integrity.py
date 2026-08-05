@@ -105,3 +105,32 @@ def test_the_manifest_is_current():
         cwd=root,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+class TestPortability:
+    """The Windows CI jobs found both of these; the POSIX suite was green throughout."""
+
+    def test_manifest_keys_use_forward_slashes(self):
+        # str(Path.relative_to(...)) yields the platform separator, so a manifest generated on
+        # Linux never matched one regenerated on Windows and --check was permanently stale there.
+        # The manifest ships inside the wheel and is verified wherever it is installed, so the
+        # keys have to mean the same thing on every platform.
+        from ranbval_sdk._internal._manifest import FILE_DIGESTS
+
+        assert FILE_DIGESTS, "manifest must not be empty"
+        assert not any("\\" in key for key in FILE_DIGESTS)
+        assert any("/" in key for key in FILE_DIGESTS), "nested paths should be present"
+
+    def test_every_script_survives_a_windows_console(self):
+        # cp1252 is the default console encoding on Windows. gen_manifest.py used ✓/✗ and crashed
+        # with UnicodeEncodeError *while reporting a failure* — hiding the failure it was
+        # reporting, which is how the stale-manifest bug stayed invisible until CI ran.
+        scripts = (Path(integrity.__file__).parents[3] / "scripts").glob("*.py")
+        for script in sorted(scripts):
+            try:
+                script.read_text().encode("cp1252")
+            except UnicodeEncodeError as e:  # pragma: no cover - only on regression
+                pytest.fail(
+                    f"{script.name} has {script.read_text()[e.start : e.end]!r}, "
+                    f"which a cp1252 console cannot print"
+                )

@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main() -> int:
     deps = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["dependencies"]
     if not deps:
-        print("✓ no declared dependencies to audit")
+        print("OK: no declared dependencies to audit")
         return 0
 
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
@@ -44,17 +44,19 @@ def main() -> int:
     # reporting the first as the second is the exact dishonesty this project exists to avoid:
     # a red hook nobody can act on, or worse, one that looks like a finding and is not.
     if "No module named pip_audit" in result.stderr:
-        print("✗ pip-audit is not installed — cannot audit. Install it with: pip install pip-audit")
+        print(
+            "FAIL: pip-audit is not installed — cannot audit. Install it with: pip install pip-audit"
+        )
         print("  (this is a missing tool, NOT a vulnerability finding)")
         return 1
 
     if result.returncode != 0:
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)
-        print(f"\n✗ known vulnerabilities among the declared dependencies: {', '.join(deps)}")
+        print(f"\nFAIL: known vulnerabilities among the declared dependencies: {', '.join(deps)}")
         return 1
 
-    print(f"✓ no known vulnerabilities in: {', '.join(deps)}")
+    print(f"OK: no known vulnerabilities in: {', '.join(deps)}")
     return 0
 
 
