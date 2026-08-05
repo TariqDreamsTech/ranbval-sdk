@@ -27,6 +27,12 @@ def run(cmd: list[str]) -> int:
 
 
 def main() -> int:
+    # The manifest must describe the code being packaged, so regenerate before building rather
+    # than trusting that someone remembered.
+    if run([sys.executable, str(ROOT / "scripts" / "gen_manifest.py")]) != 0:
+        print("✗ could not regenerate the integrity manifest")
+        return 1
+
     with tempfile.TemporaryDirectory() as tmp:
         if run([sys.executable, "-m", "build", "--outdir", tmp, "-q"]) != 0:
             print("✗ build failed")

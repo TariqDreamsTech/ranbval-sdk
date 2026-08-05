@@ -65,6 +65,17 @@ _reveal_sink: Callable[[str], None] | None = None
 _output_guards: object = None
 
 
+def _ensure_integrity() -> None:
+    """Verify this installation once, before the first plaintext exists.
+
+    Guarding the secret is pointless if the code doing the guarding has been edited — four lines
+    is enough, as this project measured. Required lazily to keep import cost off the hot path.
+    """
+    from ranbval_sdk._internal import integrity
+
+    integrity.check_once()
+
+
 def _ensure_output_guard() -> None:
     """Put the stdout/stderr guard up before this process holds its first plaintext.
 
@@ -352,8 +363,10 @@ class SecretString:
             raise RuntimeError("SecretString.use() has been tampered with")
         if object.__getattribute__(self, "_wiped"):
             raise RuntimeError("SecretString has been wiped and cannot be used again")
-        # Before any plaintext exists in this process.
+        # Before any plaintext exists in this process: raise the output guard, and verify that
+        # the code about to handle the secret is the code that was published.
         _ensure_output_guard()
+        _ensure_integrity()
         label = object.__getattribute__(self, "_label")
         # Reveal gate: if this secret is restricted to explicit reveal scopes, refuse to produce
         # the plaintext outside one (allow .use() at exactly one approved line, block elsewhere).

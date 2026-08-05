@@ -77,7 +77,18 @@ def test_not_a_git_repo_has_no_commit_risk(tmp_path):
     assert load_ranbval(start=str(tmp_path)) is True
 
 
-def test_override_env_var_bypasses_the_guard(repo, monkeypatch):
+def test_no_environment_variable_can_bypass_the_guard(repo, monkeypatch):
+    # An override used to exist as RANBVAL_ALLOW_COMMITTABLE_SECRET, which meant anyone able to
+    # set the environment could switch off the check standing between the root key and a public
+    # repository — the pattern removed from RANBVAL_SKIP_REPO_CHECK and refused for RANBVAL_HOST.
+    # Adding the file to .gitignore is one line and is the actual fix.
     _write_private(repo / ".ranbval.local", "RANBVAL_PROJECT_SECRET=ranbval-proj-x\n")
-    monkeypatch.setenv("RANBVAL_ALLOW_COMMITTABLE_SECRET", "1")
-    assert _load(repo) is True  # override → no raise
+    for name in (
+        "RANBVAL_ALLOW_COMMITTABLE_SECRET",
+        "RANBVAL_ALLOW_COMMITTABLE",
+        "RANBVAL_SKIP_COMMIT_CHECK",
+    ):
+        monkeypatch.setenv(name, "1")
+    with pytest.raises(RanbvalConfigError) as exc:
+        _load(repo)
+    assert exc.value.code == "secret_file_committable"

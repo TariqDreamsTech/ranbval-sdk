@@ -132,6 +132,16 @@ repos:
   # ── Types, tests, supply chain, packaging: pre-push ────────────────────────
   - repo: local
     hooks:
+      # A stale manifest either fails every install or, worse, passes while describing something
+      # else. Regenerating is one command; this fails the push if it was forgotten.
+      - id: integrity-manifest
+        name: integrity manifest is current
+        entry: python3 scripts/gen_manifest.py --check
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
       - id: mypy
         name: mypy (src, settings from pyproject)
         entry: python3 -m mypy

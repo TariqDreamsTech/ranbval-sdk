@@ -208,11 +208,13 @@ def _assert_secret_not_committable(paths: list[Path]) -> None:
     So we stop here, loudly, instead of letting the app start over a live landmine.
 
     ``.ranbval`` itself is safe to commit — only sealed tokens live there. This guard fires only on
-    the file that actually holds the secret (normally ``.ranbval.local``). Set
-    ``RANBVAL_ALLOW_COMMITTABLE_SECRET=1`` to override for unusual setups.
+    the file that actually holds the secret (normally ``.ranbval.local``).
+
+    There is no override. One previously existed as an environment variable, which meant anyone
+    able to set the environment could switch off the check standing between the root key and a
+    public repository — the same pattern removed from ``RANBVAL_SKIP_REPO_CHECK`` and refused for
+    ``RANBVAL_HOST``. Adding the file to ``.gitignore`` is one line and is the actual fix.
     """
-    if os.environ.get("RANBVAL_ALLOW_COMMITTABLE_SECRET", "").strip().lower() in _TRUTHY:
-        return
     exposed = [p for p in paths if _file_holds_project_secret(p) and _git_would_commit(p)]
     if not exposed:
         return
@@ -223,7 +225,7 @@ def _assert_secret_not_committable(paths: list[Path]) -> None:
         f"the key that unseals every token. Fix it before anything else:\n"
         f"    echo '{first}' >> .gitignore\n"
         f"(.ranbval itself is safe to commit — only sealed tokens live there; this guard is about "
-        f"the file with the secret.) To override: RANBVAL_ALLOW_COMMITTABLE_SECRET=1",
+        f"the file with the secret.)",
         code="secret_file_committable",
     )
 

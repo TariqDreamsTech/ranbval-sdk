@@ -1,0 +1,25 @@
+# Gitleaks configuration for ranbval-sdk.
+#
+# Extends the default ruleset rather than replacing it — the point of this file is one narrow
+# exception, not a weaker scan.
+
+[extend]
+useDefault = true
+
+[[rules]]
+# The generated integrity manifest is a list of SHA-256 digests of this package's own source
+# files. They are high-entropy by construction and entirely public — the same values anyone can
+# compute from the published wheel — but the generic-api-key heuristic cannot tell a digest from
+# a credential.
+#
+# Scoped to this one generated path and this one rule. A blanket allowlist here would be
+# self-defeating: a secret-manager repository is exactly where a leaked key matters most, and
+# gitleaks caught a real one earlier in this project's history.
+id = "generic-api-key"
+description = "Generic API Key"
+regex = '''(?i)(?:key|api|token|secret|client|passwd|password|auth|access)(?:[0-9a-z\-_\t .]{0,20})(?:[\s|']|[\s|"]){0,3}(?:=|>|:{1,3}=|\|\||:|<=|=>|:=|\?=|,)(?:'|\"|\s|=|\x60){0,5}([0-9a-z\-_.=]{10,150})(?:['|\"|\n|\r|\s|\x60|;|\\]|$)'''
+keywords = ["key", "api", "token", "secret", "client", "passwd", "password", "auth", "access"]
+
+  [rules.allowlist]
+  paths = ['''src/ranbval_sdk/_internal/_manifest\.py''']
+  regexTarget = "match"
