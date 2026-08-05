@@ -13,12 +13,12 @@ import os
 import urllib.request
 
 from ranbval_sdk._internal import transport as _transport
-from ranbval_sdk._internal.defaults import DEFAULT_RANBVAL_HOST
+from ranbval_sdk._internal.host import resolve_host
 from ranbval_sdk.exceptions import RanbvalConfigError
 
 
 def _host(host: str | None) -> str:
-    return (host or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip("/")
+    return resolve_host(host)
 
 
 def _credential(project_secret: str | None, api_key: str | None) -> dict:

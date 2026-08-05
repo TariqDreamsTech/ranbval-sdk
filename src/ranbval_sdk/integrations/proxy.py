@@ -40,7 +40,7 @@ import urllib.request
 from typing import Any
 
 from ranbval_sdk._internal import transport
-from ranbval_sdk._internal.defaults import DEFAULT_RANBVAL_HOST
+from ranbval_sdk._internal.host import resolve_host
 from ranbval_sdk.crypto.cipher import _find_project_secret_for
 from ranbval_sdk.exceptions import PlanLimitError, ProxyError
 from ranbval_sdk.serializers.proxy import build_proxy_payload
@@ -119,7 +119,7 @@ def proxy_request(
         The proxy rejected the request (bad credentials, unknown token, etc.)
         or the proxy itself was unreachable.
     """
-    host = (host_url or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip("/")
+    host = resolve_host(host_url)
 
     # ── Resolve api_key ──────────────────────────────────────────────────────
     resolved_api_key = (api_key or os.environ.get("RANBVAL_API_KEY") or "").strip()

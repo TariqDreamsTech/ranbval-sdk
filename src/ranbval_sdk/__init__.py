@@ -25,6 +25,7 @@ Basic use::
     client = openai.OpenAI(api_key=decrypt_key("OPENAI_API_KEY").use())
 """
 
+from ranbval_sdk._internal.host import allow_host_override, is_host_override_allowed
 from ranbval_sdk.config import (
     Secret,
     SecretConfig,
@@ -85,9 +86,12 @@ from ranbval_sdk.telemetry import (
     uninstall_access_monitor,
 )
 
-__version__ = "4.2.0"
+__version__ = "4.3.0"
 
 __all__ = [
+    # Control plane
+    "allow_host_override",
+    "is_host_override_allowed",
     # Config
     "use",
     "Use",
