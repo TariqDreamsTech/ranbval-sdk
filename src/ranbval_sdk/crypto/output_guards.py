@@ -21,9 +21,16 @@ Truncation is handled at the source rather than here: ``f"{key:.8}"`` produces a
 not the value and so cannot be recognised by any content check. A precision spec on a secret raises
 (see ``_ProtectedStr.__format__``) — no client library truncates a credential to build a request.
 
-**On by default** — ``load_ranbval()`` installs it during load, which is also the only point at
-which it is guaranteed to be in place before the first decrypt. A stray ``print(f"{key}")`` leaking
-a live credential is a routine accident, and nothing in the value itself can stop it.
+**On by default, and it installs itself.** ``load_ranbval()`` puts it up during load; if you never
+went through the loader, ``SecretString.use()`` puts it up before it produces the plaintext. Either
+way the guard is in place before this process holds its first secret. That second path exists
+because installing only in the loader left ``safe_decrypt(token, secret)`` — a script, a notebook
+cell, a REPL — producing a completely unguarded value, and a guard that only protects the
+recommended entry point protects the people who were already being careful.
+
+An explicit refusal is remembered: ``load_ranbval(guard_stdout=False)`` and
+:func:`uninstall_output_guards` both record it, so the next decrypt does not helpfully put back
+what the caller just declined.
 
 Two costs come with that, and neither is hidden:
 
@@ -64,6 +71,33 @@ from ranbval_sdk.crypto.secret_string import _ProtectedStr, set_reveal_sink
 
 _GUARD_INSTALLED = False
 _orig_print = builtins.print
+
+#: Set only by an explicit choice — ``load_ranbval(guard_stdout=False)`` or a call to
+#: :func:`uninstall_output_guards`. It is what stops :func:`ensure_installed` from putting the
+#: guard back: "not installed yet" and "the caller said no" must not look the same, or opting out
+#: would silently stop working the moment anything decrypted a secret.
+_opted_out = False
+
+
+def set_opted_out(opted_out: bool) -> None:
+    """Record that the caller has explicitly declined the guard (or withdrawn that)."""
+    global _opted_out
+    _opted_out = bool(opted_out)
+
+
+def ensure_installed() -> None:
+    """Install the guard unless it is already on, or the caller explicitly declined it.
+
+    Called from ``SecretString.use()`` so the guard is in place before the first plaintext exists,
+    even when the caller never went through ``load_ranbval()`` — ``safe_decrypt(token, secret)``
+    on its own used to produce an unguarded value, which is the path a quick script or a REPL
+    takes. A guard that only arrives if you used the recommended entry point protects the people
+    who were already being careful.
+    """
+    if _GUARD_INSTALLED or _opted_out:
+        return
+    install_output_guards()
+
 
 #: ``{stream_name: (the object we patched, its original write)}``. Both streams are guarded:
 #: stdout is where a stray ``print`` goes, stderr is where ``logging`` goes by default — and a
@@ -173,6 +207,7 @@ def uninstall_output_guards() -> None:
     global _GUARD_INSTALLED
     if not _GUARD_INSTALLED:
         return
+    set_opted_out(True)  # an explicit removal must not be undone by the next decrypt
     builtins.print = _orig_print
     # Only un-patch the object we actually patched. pytest, IPython and logging redirects all
     # replace sys.stdout/stderr; our write went with the old object, and assigning the saved one

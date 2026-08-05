@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ranbval-sdk)](https://pypi.org/project/ranbval-sdk/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# Ranbval SDK `v4.1.1`
+# Ranbval SDK `v4.2.0`
 
 **The Python client for Ranbval — a secret manager for API keys.** Encrypt secrets in the
 Ranbval dashboard, store the encrypted tokens in `.ranbval` files, and decrypt them only at
@@ -1303,9 +1303,11 @@ RANBVAL_PROJECT_SECRET=your_project_secret_from_dashboard
 | `RANBVAL_TELEMETRY_DEBUG` | `0` | `1` = print telemetry errors to stderr |
 | `RANBVAL_TELEMETRY_IDENTITY` | `0` | `1` = opt in to sending `git config user.email` with events |
 
-> **Repo-allowlist enforcement** and **usage telemetry** are both always on and controlled by the
-> Ranbval control plane — there is **no client-side flag to skip either** (a disable switch would
-> let an attacker turn off the very leak detection that catches them). `decrypt_key()` reports each
+> **Usage telemetry** is always on and controlled by the Ranbval control plane — there is **no
+> client-side flag to skip it** (a disable switch would let an attacker turn off the very leak
+> detection that catches them). The **repo-allowlist policy** is likewise fetched server-side on
+> every decrypt and cannot be bypassed from the client, but it only *blocks* a decrypt once you
+> enable it for the project — it is **off by default**. `decrypt_key()` reports each
 > use to the Live Monitor automatically; call `emit_telemetry()` only for richer custom events.
 
 ---

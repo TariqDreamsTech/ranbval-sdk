@@ -536,10 +536,14 @@ def load_ranbval(
     #
     # The opt-out is the argument, deliberately not an env var: an attacker who can set the
     # environment would otherwise switch the guard off for free.
-    if guard_stdout:
-        from ranbval_sdk.crypto.output_guards import install_output_guards
+    from ranbval_sdk.crypto.output_guards import install_output_guards, set_opted_out
 
+    if guard_stdout:
         install_output_guards()
+    else:
+        # Record the refusal, not just the absence. Otherwise the first decrypt would helpfully
+        # install the guard the caller had just declined.
+        set_opted_out(True)
 
     return True
 
