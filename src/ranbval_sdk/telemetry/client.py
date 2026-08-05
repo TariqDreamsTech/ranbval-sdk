@@ -18,7 +18,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from ranbval_sdk._internal import transport as _transport
-from ranbval_sdk._internal.defaults import DEFAULT_RANBVAL_HOST
+from ranbval_sdk._internal.host import resolve_host
 from ranbval_sdk._internal.logging import warn_telemetry_send_failed
 from ranbval_sdk.policy.repo import get_git_remote_origin as _get_git_remote
 from ranbval_sdk.serializers.telemetry import build_telemetry_payload
@@ -85,7 +85,7 @@ def emit_telemetry(
         if not salt:
             return
 
-        h = (host_url or os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).rstrip("/")
+        h = resolve_host(host_url)
         repo_path = os.getcwd()
         machine_name = socket.gethostname()
         git_url = _get_git_remote()

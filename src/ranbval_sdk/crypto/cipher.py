@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from ranbval_sdk._internal.defaults import DEFAULT_RANBVAL_HOST
+from ranbval_sdk._internal.host import resolve_host
 from ranbval_sdk.crypto.secret_string import SecretString
 from ranbval_sdk.exceptions import RanbvalConfigError, RanbvalDecryptError
 from ranbval_sdk.policy.repo import assert_repo_allowed_for_decrypt
@@ -69,7 +69,7 @@ def derive_key(password: str, salt_str: str) -> bytes:
 
 def _enforce_repo_allowlist_if_configured(client_salt: str) -> None:
     """Load policy from RANBVAL_HOST; when allowlist is non-empty, require matching git origin."""
-    host = (os.environ.get("RANBVAL_HOST") or DEFAULT_RANBVAL_HOST).strip()
+    host = resolve_host()
     assert_repo_allowed_for_decrypt(host, client_salt)
 
 

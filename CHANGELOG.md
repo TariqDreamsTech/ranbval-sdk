@@ -4,6 +4,50 @@ All notable changes to `ranbval-sdk` are documented here.
 
 ---
 
+## [4.3.0] - 2026-08-05
+
+### Security
+
+- **`RANBVAL_HOST` can no longer redirect the control plane.** Every server-side control here — the
+  repo allowlist above all — is only as trustworthy as the server being asked, and the host was
+  read from the environment without constraint. Anyone who could set an environment variable could
+  point the SDK at a server of their own, have it answer `{"enforce_allowlist": false}`, and walk
+  straight past the allowlist. Demonstrated with a nine-line local HTTP server, not theorised:
+
+  ```
+  RANBVAL_HOST=http://127.0.0.1:8799  ->  decrypt succeeded, policy supplied by the attacker
+  ```
+
+  That is the control this documentation has been calling server-side and unbypassable. It was
+  bypassable with one variable.
+
+  The rule now:
+
+  | | |
+  |---|---|
+  | No configuration | the official host — the common case needs nothing |
+  | A host passed **in code** (`load_ranbval(host=...)`, `proxy_request(host_url=...)`) | honoured |
+  | `RANBVAL_HOST` naming anything else | **refused** (`host_not_allowed`) |
+
+  A self-hosted control plane opts in **from code**, once:
+
+  ```python
+  from ranbval_sdk import allow_host_override
+  allow_host_override()
+  ```
+
+  Deliberately not an environment variable and not a `.ranbval` key — both are settable by anyone
+  who can influence the process, and this is the switch that decides which server gets to say
+  whether a decrypt is allowed. Code is a boundary an attacker holding only the environment cannot
+  cross. That is the same reasoning applied to the guard opt-outs, and it should have been applied
+  here first.
+
+### Added
+
+- **`allow_host_override()` / `is_host_override_allowed()`** — the code-level opt-in above.
+
+---
+
 ## [4.2.0] - 2026-07-30
 
 ### Added
