@@ -1,22 +1,24 @@
 {
-  "version": "v1.0.0",
+  "$schema": "https://fundingjson.org/schema/v1.1.0.json",
+  "version": "v1.1.0",
   "entity": {
     "type": "individual",
     "role": "maintainer",
     "name": "Ahsan Tariq",
     "email": "ahsantariq0724@gmail.com",
     "phone": "+923390879159",
-    "description": "Independent security researcher and solo open-source developer building Ranbval Secret Manager — cryptographic runtime credential security, origin-bound .ranbval secrets, and zero-client proxy infrastructure.",
+    "description": "Independent security researcher and solo open-source developer building Ranbval Secret Manager (https://secret.ranbval.com) — cryptographic runtime credential security, origin-bound .ranbval secrets, and zero-client proxy infrastructure.",
     "webpageUrl": {
-      "url": "https://secret.ranbval.com"
+      "url": "https://github.com/TariqDreamsTech"
     }
   },
   "projects": [
     {
+      "guid": "ranbval-sdk",
       "name": "Ranbval Secret Manager (ranbval-sdk)",
-      "description": "Open-source cryptographic secret manager and runtime guard replacing plaintext .env files with AES-256-GCM encrypted, repository- and origin-bound secrets, destination-based stdout/stderr leak screening, zero-client proxy secrets, and live leak attribution.",
+      "description": "Open-source cryptographic secret manager and runtime guard replacing plaintext .env files with AES-256-GCM encrypted, repository- and origin-bound secrets, destination-based stdout/stderr leak screening, zero-client proxy secrets, and live leak attribution. Live control plane at https://secret.ranbval.com and published on PyPI and npm.",
       "webpageUrl": {
-        "url": "https://secret.ranbval.com"
+        "url": "https://github.com/TariqDreamsTech/ranbval-sdk"
       },
       "repositoryUrl": {
         "url": "https://github.com/TariqDreamsTech/ranbval-sdk"
@@ -27,7 +29,7 @@
       "tags": [
         "security",
         "cryptography",
-        "secrets-management",
+        "developer-tools",
         "devops",
         "python",
         "nodejs",
@@ -41,23 +43,34 @@
         "guid": "bank-transfer-pk",
         "type": "bank",
         "address": "",
-        "description": "Direct international wire transfer / IBAN to maintainer Ahsan Tariq (Pakistan)."
+        "description": "Will accept direct international bank/wire transfers (IBAN/SWIFT). Please email ahsantariq0724@gmail.com for details."
       }
     ],
     "plans": [
       {
-        "guid": "core-infrastructure-and-rust-sdk",
+        "guid": "core-infra-rust-sdk",
         "status": "active",
-        "name": "Self-Hostable Control Plane, Offline Policy Tokens & Rust/Node.js SDK Parity",
-        "description": "6-month roadmap to ship the open-source self-hostable Docker control plane, Ed25519 offline policy verification tokens, full Node.js and Rust SDK parity, and formal cryptographic security auditing.",
+        "name": "Self-Hostable Control Plane, Offline Policy Tokens & Rust SDK",
+        "description": "6-month roadmap to ship the open-source self-hostable Docker control plane, Ed25519 offline policy verification tokens, full Node.js and Rust SDK parity, and formal security auditing.",
         "amount": 15000,
         "currency": "USD",
         "frequency": "one-time",
         "channels": [
           "bank-transfer-pk"
         ]
+      },
+      {
+        "guid": "monthly-maintainer",
+        "status": "active",
+        "name": "Monthly maintainer & proxy infrastructure support",
+        "description": "Covers ongoing maintenance, CI/CD test runners across 15 OS/Python combinations, and global zero-client proxy server hosting.",
+        "amount": 1500,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": [
+          "bank-transfer-pk"
+        ]
       }
-    ],
-    "history": []
+    ]
   }
 }
