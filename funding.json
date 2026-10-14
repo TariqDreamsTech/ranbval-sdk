@@ -1,0 +1,63 @@
+{
+  "version": "v1.0.0",
+  "entity": {
+    "type": "individual",
+    "role": "maintainer",
+    "name": "Ahsan Tariq",
+    "email": "ahsantariq0724@gmail.com",
+    "phone": "+923390879159",
+    "description": "Independent security researcher and solo open-source developer building Ranbval Secret Manager — cryptographic runtime credential security, origin-bound .ranbval secrets, and zero-client proxy infrastructure.",
+    "webpageUrl": {
+      "url": "https://secret.ranbval.com"
+    }
+  },
+  "projects": [
+    {
+      "name": "Ranbval Secret Manager (ranbval-sdk)",
+      "description": "Open-source cryptographic secret manager and runtime guard replacing plaintext .env files with AES-256-GCM encrypted, repository- and origin-bound secrets, destination-based stdout/stderr leak screening, zero-client proxy secrets, and live leak attribution.",
+      "webpageUrl": {
+        "url": "https://secret.ranbval.com"
+      },
+      "repositoryUrl": {
+        "url": "https://github.com/TariqDreamsTech/ranbval-sdk"
+      },
+      "licenses": [
+        "spdx:MIT"
+      ],
+      "tags": [
+        "security",
+        "cryptography",
+        "secrets-management",
+        "devops",
+        "python",
+        "nodejs",
+        "zero-trust"
+      ]
+    }
+  ],
+  "funding": {
+    "channels": [
+      {
+        "guid": "bank-transfer-pk",
+        "type": "bank",
+        "address": "",
+        "description": "Direct international wire transfer / IBAN to maintainer Ahsan Tariq (Pakistan)."
+      }
+    ],
+    "plans": [
+      {
+        "guid": "core-infrastructure-and-rust-sdk",
+        "status": "active",
+        "name": "Self-Hostable Control Plane, Offline Policy Tokens & Rust/Node.js SDK Parity",
+        "description": "6-month roadmap to ship the open-source self-hostable Docker control plane, Ed25519 offline policy verification tokens, full Node.js and Rust SDK parity, and formal cryptographic security auditing.",
+        "amount": 15000,
+        "currency": "USD",
+        "frequency": "one-time",
+        "channels": [
+          "bank-transfer-pk"
+        ]
+      }
+    ],
+    "history": []
+  }
+}
